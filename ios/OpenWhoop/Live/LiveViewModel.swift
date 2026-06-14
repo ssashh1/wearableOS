@@ -24,6 +24,7 @@ public final class LiveViewModel: ObservableObject {
         // user has decided), so calling both here keeps all auth in one place.
         SyncNudge.requestAuthorization()
         RecoveryNotifier.requestAuthorization()
+        HealthKitSyncer.requestAuthorization()
         s.$lastSyncedAt
             .compactMap { $0 }
             .sink { _ in SyncNudge.reschedule() }

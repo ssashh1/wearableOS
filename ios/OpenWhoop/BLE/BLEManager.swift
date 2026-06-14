@@ -30,6 +30,9 @@ public final class BLEManager: NSObject, ObservableObject {
     // MARK: Upload
     private var uploader: Uploader?
 
+    // MARK: HealthKit
+    private var healthKitSyncer: HealthKitSyncer?
+
     // MARK: Server pull (History = union(phone-collected, server-computed))
     private var serverSync: ServerSync?
     /// Guards the once-per-launch cloud restore attempt so it does not re-run on every reconnect.
@@ -143,6 +146,7 @@ public final class BLEManager: NSObject, ObservableObject {
             uploader = Uploader(config: cfg, store: store, deviceId: deviceId)
             serverSync = ServerSync(config: cfg, store: store, deviceId: deviceId)
         }
+        healthKitSyncer = HealthKitSyncer(whoopStore: store, deviceId: deviceId)
     }
 
     /// Designated initializer for testing and preview use: accepts a pre-built Collector.
@@ -351,6 +355,7 @@ public final class BLEManager: NSObject, ObservableObject {
         backfillFrameQueue.removeAll()
         log("Backfill: session ended — reason=\(reason)")
         uploadOpportunistically()
+        syncHealthKit()
         // Read-path sync runs AFTER the offload, never concurrently with it — the offload and the
         // pull share the WhoopStore actor, and a large first-run pull would starve the Backfiller's
         // per-chunk insert→ack and trip the 20s offload watchdog. Safe to run now: backfilling=false.
@@ -390,6 +395,12 @@ public final class BLEManager: NSObject, ObservableObject {
     private func uploadOpportunistically() {
         guard let uploader else { return }
         Task { await uploader.drain() }
+    }
+
+    /// Fire-and-forget HealthKit sync: writes new HR samples to Apple Health since the last watermark.
+    private func syncHealthKit() {
+        guard let syncer = healthKitSyncer else { return }
+        Task { await syncer.sync() }
     }
 
     /// Fire-and-forget server pull: GET new decoded streams + derived metrics since the read
