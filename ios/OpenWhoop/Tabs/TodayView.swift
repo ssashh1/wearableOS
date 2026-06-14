@@ -55,13 +55,16 @@ struct TodayView: View {
                 // Hero recovery ring — server-only; shows pending ring when unconfigured
                 heroSection
 
-                // HRV + RHR: both locally computed — shown first since always available
+                // HRV + RHR: locally computed, 7-day sparklines
                 hrvAndRhrRow
+
+                // Stress: Baevsky index from last 2 h of RR data (local, no server)
+                stressCard
 
                 // Today's HR summary — local, shown whenever HR data exists for today
                 todayHRCard
 
-                // Strain — server only; shows "—" without server
+                // Strain: local Edwards TRIMP when server unavailable
                 NavigationLink(destination: MetricDetailView(kind: .strain)) {
                     strainCard
                 }
@@ -135,15 +138,72 @@ struct TodayView: View {
         .frame(width: 200, height: 200)
     }
 
+    // MARK: - Stress card (Baevsky index, local)
+
+    @ViewBuilder
+    private var stressCard: some View {
+        if let stress = metrics.localStress {
+            VStack(alignment: .leading, spacing: WH.Spacing.sm) {
+                HStack {
+                    Text("STRESS INDEX")
+                        .font(WH.Font.cardTitle)
+                        .foregroundStyle(WH.Color.textSecondary)
+                        .tracking(1.2)
+                    Spacer()
+                    Text("Last 2h · Baevsky")
+                        .font(WH.Font.caption)
+                        .foregroundStyle(WH.Color.textSecondary)
+                }
+                HStack(alignment: .lastTextBaseline, spacing: WH.Spacing.sm) {
+                    Text(String(format: "%.1f", stress))
+                        .font(WH.Font.metricMedium())
+                        .foregroundStyle(stressColor(stress))
+                        .monospacedDigit()
+                    Text("/ 10")
+                        .font(WH.Font.unit)
+                        .foregroundStyle(WH.Color.textSecondary)
+                    Spacer()
+                    Text(stressLabel(stress))
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(stressColor(stress))
+                        .padding(.horizontal, WH.Spacing.sm)
+                        .padding(.vertical, WH.Spacing.xs)
+                        .background(stressColor(stress).opacity(0.15),
+                                    in: Capsule())
+                }
+            }
+            .padding(WH.Spacing.md)
+            .background(WH.Color.surface,
+                        in: RoundedRectangle(cornerRadius: WH.Radius.card, style: .continuous))
+        }
+    }
+
+    private func stressColor(_ score: Double) -> Color {
+        switch score {
+        case ..<3:  return WH.Color.recoveryGreen
+        case 3..<5: return WH.Color.recoveryYellow
+        default:    return WH.Color.recoveryRed
+        }
+    }
+
+    private func stressLabel(_ score: Double) -> String {
+        switch score {
+        case ..<3:  return "LOW"
+        case 3..<5: return "MODERATE"
+        case 5..<7: return "HIGH"
+        default:    return "VERY HIGH"
+        }
+    }
+
     // MARK: - Strain card
 
     private var strainCard: some View {
-        let value: String = {
-            guard let s = metrics.today?.strain else { return "—" }
-            return String(format: "%.1f", s)
-        }()
-        let hasStrain = metrics.today?.strain != nil
-        return MetricCard(title: "Day Strain",
+        // Prefer server-computed strain; fall back to local Edwards TRIMP
+        let strain    = metrics.today?.strain ?? metrics.localStrain
+        let isLocal   = metrics.today?.strain == nil && metrics.localStrain != nil
+        let value     = strain.map { String(format: "%.1f", $0) } ?? "—"
+        let hasStrain = strain != nil
+        return MetricCard(title: isLocal ? "Day Strain (Est.)" : "Day Strain",
                           value: value,
                           unit: hasStrain ? "/ 21" : nil,
                           accentColor: hasStrain ? WH.Color.strainBlue : WH.Color.textSecondary)

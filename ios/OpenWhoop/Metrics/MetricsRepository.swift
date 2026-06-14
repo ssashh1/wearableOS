@@ -26,6 +26,9 @@ final class MetricsRepository: ObservableObject {
     @Published private(set) var localHRVHistory: [Double] = [] // 7-night RMSSD history, oldest→newest
     @Published private(set) var localRHRHistory: [Double] = [] // 7-night RHR history, oldest→newest
     @Published private(set) var localSleepEstimate: LocalSleepEstimate? // overnight strap data (no staging)
+    @Published private(set) var localStrain: Double?            // Edwards TRIMP 0-21 for today
+    @Published private(set) var localStress: Double?            // Baevsky index 0-10 (last 2 h)
+    @Published private(set) var localMaxHR: Int?                // auto-detected 95th-pct from 7-day data
     @Published private(set) var isRefreshing = false
     @Published private(set) var lastError: String?
     @Published private(set) var lastRefreshedAt: Date?
@@ -176,10 +179,11 @@ final class MetricsRepository: ObservableObject {
         )) ?? []
         todayStats = LocalMetrics.todayStats(from: todayHR)
 
-        // 7-night sparkline history: one wide query per sensor, filtered in-memory per night.
-        // histFrom covers oldest night (7 nights ago at 8 PM) to tonight's window end.
+        // 7-night sparkline history + data for strain/stress.
+        // histFrom: oldest night (7 nights ago at 8 PM).
+        // histTo: now (not just 10 AM) so daytime exercise HR is captured for max-HR detection.
         let histFrom = startOfTodayEpoch - 7 * 86_400 - 4 * 3600
-        let histTo   = overnightTo
+        let histTo   = todayTo
 
         let histRR = (try? await store.rrIntervals(
             deviceId: deviceId, from: histFrom, to: histTo, limit: 500_000
@@ -201,6 +205,36 @@ final class MetricsRepository: ObservableObject {
         }
         localHRVHistory = hrvHist
         localRHRHistory = rhrHist
+
+        // Auto-detect max HR (95th-pct from 7-day window covers daytime exercise)
+        let autoMaxHR = StrainCalculator.detectMaxHR(from: histHR)
+        localMaxHR = autoMaxHR
+
+        // Strain: today's HR + auto-detected max HR + overnight RHR as resting HR
+        if let maxHR = autoMaxHR, let rhr = localRHR, todayHR.count >= StrainCalculator.minReadings {
+            localStrain = StrainCalculator.strain(
+                from: todayHR, maxHR: maxHR, restingHR: Int(rhr.rounded()))
+        } else {
+            localStrain = nil
+        }
+
+        // Stress: most recent 2 h of RR intervals; fall back to BPM-derived if sparse
+        let twoHoursAgo = todayTo - 2 * 3600
+        let recentRR = (try? await store.rrIntervals(
+            deviceId: deviceId, from: twoHoursAgo, to: todayTo, limit: 10_000
+        )) ?? []
+        let recentRRValues = recentRR.map(\.rrMs)
+        if recentRRValues.count >= StressCalculator.minIntervals {
+            localStress = StressCalculator.stress(from: recentRRValues)
+        } else {
+            let recentHR = todayHR.filter { $0.ts >= twoHoursAgo }
+            if recentHR.count >= StressCalculator.minIntervals {
+                let derived = recentHR.map { Int((60_000.0 / Double($0.bpm)).rounded()) }
+                localStress = StressCalculator.stress(from: derived)
+            } else {
+                localStress = nil
+            }
+        }
     }
 
     // MARK: - Refresh from server then reload
