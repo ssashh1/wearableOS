@@ -416,6 +416,24 @@ private struct LiveContentView: View {
             VStack(alignment: .leading, spacing: WH.Spacing.sm) {
                 sectionHeader("Research")
 
+                NavigationLink(destination: HRVDebugView(state: state)) {
+                    HStack {
+                        Image(systemName: "waveform.path.ecg.rectangle")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(WH.Color.teal)
+                        Text("HRV Debug")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(WH.Color.teal)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(WH.Color.textSecondary.opacity(0.5))
+                    }
+                    .padding(.vertical, WH.Spacing.xs)
+                }
+
+                Divider().background(WH.Color.separator)
+
                 Toggle("Capture raw frames", isOn: $enableRawCapture)
                     .tint(WH.Color.strainBlue)
                     .foregroundStyle(WH.Color.textPrimary)

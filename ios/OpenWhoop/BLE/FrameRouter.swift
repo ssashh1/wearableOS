@@ -55,12 +55,13 @@ public final class FrameRouter {
                 // Accumulate for SQLite batch-write
                 pendingHR.append(HRSample(ts: nowTs, bpm: hr))
             }
-            // The realtime stream usually reports rr_count=0; only update R-R when this frame
-            // actually carries intervals, so we don't wipe R-R sourced from the 0x2A37 profile.
+            // The realtime stream usually reports rr_count=0; only update state.rr (display)
+            // when this frame carries intervals. rrHistory is NOT updated here — it is populated
+            // exclusively by the 0x2A37 standard profile (BLEManager.parseStandardHR) so that
+            // consecutive rrHistory entries are always consecutive heartbeats from the same source.
+            // pendingRR still collects these for SQLite persistence.
             if let rr = parsed.parsed["rr_intervals"]?.intArrayValue, !rr.isEmpty {
                 state.rr = rr
-                state.rrHistory.append(contentsOf: rr)
-                if state.rrHistory.count > 500 { state.rrHistory.removeFirst(state.rrHistory.count - 500) }
                 pendingRR.append(contentsOf: rr.map { RRInterval(ts: nowTs, rrMs: $0) })
             }
             // Flush accumulated HR/RR to SQLite every 5 seconds (fire-and-forget Task).

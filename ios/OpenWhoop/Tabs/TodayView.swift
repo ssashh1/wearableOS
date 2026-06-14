@@ -118,7 +118,7 @@ struct TodayView: View {
     private var liveNowSection: some View {
         if live.state.connected {
             let liveHRV    = HRVCalculator.rmssd(live.state.rrHistory, minPairs: 15)
-            let liveStress = StressCalculator.stress(from: live.state.rrHistory, min: 30)
+            let liveStress = StressCalculator.stress(from: live.state.rrHistory.map(\.rrMs), min: 30)
                           ?? StressCalculator.stress(from: live.state.hrHistory.map { Int((60_000.0 / Double($0.bpm)).rounded()) }, min: 30)
 
             VStack(alignment: .leading, spacing: WH.Spacing.sm) {
@@ -156,9 +156,10 @@ struct TodayView: View {
 
                     columnDivider
 
-                    // HRV — needs >60 clean RR pairs (~1 min of 0x2A37 data)
-                    liveStatColumn(label: "HRV",
-                                   value: liveHRV.map { String(format: "%.0f", $0) } ?? "—",
+                    // HRV (RMSSD) — needs 15 clean successive pairs from 0x2A37 stream
+                    liveStatColumn(label: "HRV (RMSSD)",
+                                   value: liveHRV.map { String(format: "%.0f", $0) }
+                                       ?? (live.state.rrHistory.count < 30 ? "Calibrating" : "—"),
                                    unit: liveHRV != nil ? "ms" : "",
                                    color: liveHRV != nil ? WH.Color.teal : WH.Color.textSecondary)
 

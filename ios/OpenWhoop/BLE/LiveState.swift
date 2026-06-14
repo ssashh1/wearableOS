@@ -15,6 +15,17 @@ public struct LiveHRPoint: Identifiable, Equatable {
     }
 }
 
+// MARK: - RRSample
+
+/// A single R-R interval with the wall-clock time the BLE notification was received.
+/// The timestamp is used to detect session boundaries (>30s gap = data gap, not consecutive beats).
+/// Multiple RR values from the same 0x2A37 notification share the same `ts`.
+public struct RRSample {
+    public let ts: Date
+    public let rrMs: Int
+    public init(ts: Date, rrMs: Int) { self.ts = ts; self.rrMs = rrMs }
+}
+
 // MARK: - LiveState
 
 /// Observable snapshot of the live connection + biometric state, driven by FrameRouter
@@ -33,8 +44,10 @@ public final class LiveState: ObservableObject {
     // Rolling live buffers used by NowView — capped to avoid unbounded growth.
     // hrHistory: last 300 readings ≈ 5 minutes at 1 Hz.
     // rrHistory: last 500 RR intervals ≈ 6–8 minutes of beat-to-beat data.
+    // Only 0x2A37 (parseStandardHR) writes to rrHistory; cleared on disconnect to prevent
+    // cross-session pairs that would artificially inflate successive differences.
     @Published public var hrHistory: [LiveHRPoint] = []
-    @Published public var rrHistory: [Int] = []
+    @Published public var rrHistory: [RRSample] = []
     @Published public var sessionStartedAt: Date? = nil
     @Published public var sessionSteps: Int = 0      // steps counted from WHOOP IMU this session
     /// Rolling log of human-readable lines for the on-device verification checklist.

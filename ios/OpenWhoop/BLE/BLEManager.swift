@@ -558,7 +558,8 @@ public final class BLEManager: NSObject, ObservableObject {
         // Always accumulate into the rolling buffer so NowView HRV/Stress can compute.
         if !m.rr.isEmpty {
             state.rr = m.rr
-            state.rrHistory.append(contentsOf: m.rr)
+            let now = Date()
+            state.rrHistory.append(contentsOf: m.rr.map { RRSample(ts: now, rrMs: $0) })
             if state.rrHistory.count > 500 { state.rrHistory.removeFirst(state.rrHistory.count - 500) }
         }
         // HR: prefer the custom REALTIME_DATA stream once bonded; use 0x2A37 as pre-bond fallback.
@@ -619,6 +620,7 @@ extension BLEManager: @preconcurrency CBCentralManagerDelegate {
         Task { @MainActor in await collector?.flush() }
         router.flushPendingPersist()
         state.connected = false
+        state.rrHistory = []   // prevent cross-session pairs from inflating RMSSD
         state.sessionSteps = 0
         didBond = false
         clockRequested = false

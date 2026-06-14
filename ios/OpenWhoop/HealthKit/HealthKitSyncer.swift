@@ -116,7 +116,7 @@ final class HealthKitSyncer {
             deviceId: deviceId, from: from, to: to, limit: 100_000
         ) else { return }
 
-        guard let hrv = HRVCalculator.overnightRMSSD(from: intervals) else { return }
+        guard let hrv = HRVCalculator.overnightSDNN(from: intervals) else { return }
 
         let sampleDate = HRVCalculator.overnightSampleDate(calendar: cal)
         let quantity = HKQuantity(unit: HKUnit.secondUnit(with: .milli), doubleValue: hrv)

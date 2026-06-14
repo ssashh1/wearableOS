@@ -21,7 +21,7 @@ struct NowView: View {
         HRVCalculator.rmssd(live.state.rrHistory, minPairs: 15)
     }
     private var liveStress: Double? {
-        let rr = live.state.rrHistory
+        let rr = live.state.rrHistory.map(\.rrMs)
         if let s = StressCalculator.stress(from: rr, min: 30) { return s }
         // Fallback: derive RR from hrHistory when beat-to-beat data is sparse.
         // 60000/bpm gives the expected interval — captures BPM variability for Baevsky.
@@ -209,10 +209,12 @@ struct NowView: View {
         let cols = [GridItem(.flexible(), spacing: WH.Spacing.sm),
                     GridItem(.flexible(), spacing: WH.Spacing.sm)]
         return LazyVGrid(columns: cols, spacing: WH.Spacing.sm) {
-            // HRV — needs >60 clean RR pairs
+            // HRV (RMSSD) — needs 15 clean successive pairs from 0x2A37 stream
             MetricCard(
-                title: "HRV",
-                value: liveHRV.map { String(format: "%.0f", $0) } ?? "—",
+                title: "HRV (RMSSD)",
+                value: liveHRV.map { String(format: "%.0f", $0) }
+                    ?? (live.state.connected && live.state.rrHistory.count < 30
+                        ? "Calibrating" : "—"),
                 unit: liveHRV != nil ? "ms" : nil,
                 accentColor: WH.Color.teal
             )
