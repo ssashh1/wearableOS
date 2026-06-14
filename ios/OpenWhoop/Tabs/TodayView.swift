@@ -199,11 +199,12 @@ struct TodayView: View {
 
     private var strainCard: some View {
         // Prefer server-computed strain; fall back to local Edwards TRIMP
-        let strain    = metrics.today?.strain ?? metrics.localStrain
-        let isLocal   = metrics.today?.strain == nil && metrics.localStrain != nil
-        let value     = strain.map { String(format: "%.1f", $0) } ?? "—"
-        let hasStrain = strain != nil
-        return MetricCard(title: isLocal ? "Day Strain (Est.)" : "Day Strain",
+        let strain      = metrics.today?.strain ?? metrics.localStrain
+        let isLocal     = metrics.today?.strain == nil && metrics.localStrain != nil
+        let isEstimated = isLocal && !metrics.maxHRIsUserSet
+        let value       = strain.map { String(format: "%.1f", $0) } ?? "—"
+        let hasStrain   = strain != nil
+        return MetricCard(title: isEstimated ? "Day Strain (Est.)" : "Day Strain",
                           value: value,
                           unit: hasStrain ? "/ 21" : nil,
                           accentColor: hasStrain ? WH.Color.strainBlue : WH.Color.textSecondary)

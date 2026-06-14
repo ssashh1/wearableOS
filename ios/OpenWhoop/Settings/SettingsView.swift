@@ -95,6 +95,9 @@ struct SettingsView: View {
     // Age
     @State private var ageStr: String = ""
 
+    // Max HR override (local only — not sent to server)
+    @State private var maxHRStr: String = ""
+
     // Sex
     @State private var sex: String = "male"   // "male" | "female" | "nonbinary"
 
@@ -137,6 +140,7 @@ struct SettingsView: View {
                 heightSection
                 weightSection
                 ageSection
+                maxHRSection
                 sexSection
                 saveSection
                 footerSection
@@ -233,6 +237,23 @@ struct SettingsView: View {
         }
     }
 
+    private var maxHRSection: some View {
+        Section {
+            HStack {
+                TextField("e.g. 185", text: $maxHRStr)
+                    .keyboardType(.numberPad)
+                Text("bpm")
+                    .foregroundStyle(WH.Color.textSecondary)
+            }
+        } header: {
+            Text("Max Heart Rate Override")
+        } footer: {
+            Text("Improves local strain accuracy. Leave blank to auto-detect (95th-percentile of your 7-day HR data).")
+                .font(WH.Font.caption)
+                .foregroundStyle(WH.Color.textSecondary)
+        }
+    }
+
     private var sexSection: some View {
         Section {
             Picker("Biological Sex", selection: $sex) {
@@ -322,6 +343,9 @@ struct SettingsView: View {
                 applyProfile(remote)
             }
         }
+        // 3. Load local-only max HR override.
+        let storedMaxHR = UserDefaults.standard.integer(forKey: MetricsRepository.maxHROverrideKey)
+        maxHRStr = storedMaxHR > 0 ? String(storedMaxHR) : ""
     }
 
     private func applyProfile(_ p: Profile) {
@@ -417,6 +441,14 @@ struct SettingsView: View {
 
     @MainActor
     private func save() async {
+        // Save max HR override locally (never sent to server; 0 / out-of-range → clear)
+        let maxHRValue = Int(maxHRStr).flatMap { ($0 > 100 && $0 < 250) ? $0 : nil }
+        if let maxHRValue {
+            UserDefaults.standard.set(maxHRValue, forKey: MetricsRepository.maxHROverrideKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: MetricsRepository.maxHROverrideKey)
+        }
+
         let profile = buildProfile()
 
         // 1. Persist locally immediately.

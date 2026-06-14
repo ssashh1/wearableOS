@@ -26,6 +26,9 @@ final class MetricsRepository: ObservableObject {
     @Published private(set) var localHRVHistory: [Double] = [] // 7-night RMSSD history, oldest→newest
     @Published private(set) var localRHRHistory: [Double] = [] // 7-night RHR history, oldest→newest
     @Published private(set) var localSleepEstimate: LocalSleepEstimate? // overnight strap data (no staging)
+    @Published private(set) var localSleepPeriods: [SleepPeriod] = []   // gravity-detected sleep periods
+    @Published private(set) var localStrainHistory: [TrendPoint] = []   // per-day local strain (7 days)
+    @Published private(set) var maxHRIsUserSet: Bool = false             // true when user overrides max HR
     @Published private(set) var localStrain: Double?            // Edwards TRIMP 0-21 for today
     @Published private(set) var localStress: Double?            // Baevsky index 0-10 (last 2 h)
     @Published private(set) var localMaxHR: Int?                // auto-detected 95th-pct from 7-day data
@@ -41,6 +44,9 @@ final class MetricsRepository: ObservableObject {
     // Lazy-open state (app path).
     private var _alreadyOpen = false
     private var _openTask: Task<Void, Never>?
+
+    // UserDefaults key for the user-supplied max HR override (0 = not set → auto-detect)
+    static let maxHROverrideKey = "com.openwhoop.maxhr.override"
 
     // MARK: - Synchronous init (app path — store not yet open)
 
@@ -173,6 +179,12 @@ final class MetricsRepository: ObservableObject {
             localSleepEstimate = nil
         }
 
+        // Overnight gravity → gravity-based sleep detection
+        let overnightGravity = (try? await store.gravitySamples(
+            deviceId: deviceId, from: overnightFrom, to: overnightTo, limit: 100_000
+        )) ?? []
+        localSleepPeriods = SleepDetector.detectSleep(from: overnightGravity)
+
         // Today HR → summary stats
         let todayHR = (try? await store.hrSamples(
             deviceId: deviceId, from: todayFrom, to: todayTo, limit: 100_000
@@ -206,16 +218,41 @@ final class MetricsRepository: ObservableObject {
         localHRVHistory = hrvHist
         localRHRHistory = rhrHist
 
-        // Auto-detect max HR (95th-pct from 7-day window covers daytime exercise)
+        // Auto-detect max HR (95th-pct from 7-day window covers daytime exercise).
+        // User-supplied override takes precedence when set.
         let autoMaxHR = StrainCalculator.detectMaxHR(from: histHR)
-        localMaxHR = autoMaxHR
+        let userMaxHR = UserDefaults.standard.integer(forKey: Self.maxHROverrideKey)
+        let effectiveMaxHR: Int? = userMaxHR > 0 ? userMaxHR : autoMaxHR
+        maxHRIsUserSet = userMaxHR > 0
+        localMaxHR = effectiveMaxHR
 
-        // Strain: today's HR + auto-detected max HR + overnight RHR as resting HR
-        if let maxHR = autoMaxHR, let rhr = localRHR, todayHR.count >= StrainCalculator.minReadings {
+        // Strain: today's HR + effective max HR + overnight RHR as resting HR
+        if let maxHR = effectiveMaxHR, let rhr = localRHR, todayHR.count >= StrainCalculator.minReadings {
             localStrain = StrainCalculator.strain(
                 from: todayHR, maxHR: maxHR, restingHR: Int(rhr.rounded()))
         } else {
             localStrain = nil
+        }
+
+        // Per-day local strain history (7 UTC calendar days, oldest→newest)
+        if let maxHR = effectiveMaxHR, let rhr = localRHR {
+            let restingHR = Int(rhr.rounded())
+            let utcFmt = DateFormatter()
+            utcFmt.dateFormat = "yyyy-MM-dd"
+            utcFmt.timeZone = TimeZone(identifier: "UTC")
+            var strainPts: [TrendPoint] = []
+            for i in stride(from: 6, through: 0, by: -1) {
+                let dayFrom = startOfTodayEpoch - i * 86_400
+                let dayTo   = i == 0 ? todayTo : dayFrom + 86_400
+                let dayHR   = histHR.filter { $0.ts >= dayFrom && $0.ts < dayTo }
+                if let s = StrainCalculator.strain(from: dayHR, maxHR: maxHR, restingHR: restingHR) {
+                    let date = Date(timeIntervalSince1970: TimeInterval(dayFrom))
+                    strainPts.append(TrendPoint(id: utcFmt.string(from: date), date: date, value: s))
+                }
+            }
+            localStrainHistory = strainPts
+        } else {
+            localStrainHistory = []
         }
 
         // Stress: most recent 2 h of RR intervals; fall back to BPM-derived if sparse

@@ -34,6 +34,9 @@ struct TrendsView: View {
     @State private var hrSelected: TrendPoint? = nil
     @State private var hrIsLoading = true
 
+    // Local strain chart selection (not navigable — used only to satisfy MetricChart binding)
+    @State private var localStrainSelected: TrendPoint? = nil
+
     // MARK: - Body
 
     var body: some View {
@@ -159,7 +162,7 @@ struct TrendsView: View {
 
                 rangePicker
 
-                if rows.isEmpty {
+                if rows.isEmpty && metrics.localStrainHistory.isEmpty {
                     emptyState
                 } else {
                     chartsStack
@@ -197,19 +200,66 @@ struct TrendsView: View {
 
     private var chartsStack: some View {
         VStack(spacing: WH.Spacing.md) {
-            // Daily-aggregate cards (recovery / HRV / RHR / strain / sleep)
-            ForEach(MetricKind.dailyCases, id: \.id) { kind in
-                let pts = points(for: kind)
-                TrendChartCard(
-                    kind: kind,
-                    points: pts,
-                    latestLabel: latestLabel(for: kind, pts: pts),
-                    onSelectDay: selectDay
-                )
+            // Daily-aggregate cards (server) — only when server data is present
+            if !rows.isEmpty {
+                ForEach(MetricKind.dailyCases, id: \.id) { kind in
+                    let pts = points(for: kind)
+                    TrendChartCard(
+                        kind: kind,
+                        points: pts,
+                        latestLabel: latestLabel(for: kind, pts: pts),
+                        onSelectDay: selectDay
+                    )
+                }
             }
+
+            // Local strain chart — shown when no server data but local HR exists
+            localStrainCard
 
             // Raw HR card — stream-backed, independent of the daily range picker
             hrCard
+        }
+    }
+
+    // MARK: - Local strain chart card
+
+    @ViewBuilder
+    private var localStrainCard: some View {
+        let pts = metrics.localStrainHistory
+        if !pts.isEmpty && rows.isEmpty {
+            VStack(alignment: .leading, spacing: WH.Spacing.sm) {
+                HStack(alignment: .lastTextBaseline) {
+                    Text("LOCAL STRAIN (EST.)")
+                        .font(WH.Font.cardTitle)
+                        .foregroundStyle(WH.Color.textSecondary)
+                        .tracking(1.2)
+                    Spacer()
+                    HStack(alignment: .lastTextBaseline, spacing: 3) {
+                        Text(pts.last.map { MetricKind.strain.formatShort($0.value) } ?? "—")
+                            .font(WH.Font.metricMedium(size: 22))
+                            .foregroundStyle(WH.Color.strainBlue)
+                            .monospacedDigit()
+                        Text(MetricKind.strain.unit)
+                            .font(WH.Font.caption)
+                            .foregroundStyle(WH.Color.textSecondary)
+                    }
+                }
+                MetricChart(
+                    series: pts,
+                    kind: .strain,
+                    showAxes: true,
+                    showSelection: false,
+                    yDomain: MetricKind.strain.fixedYDomain,
+                    selected: $localStrainSelected
+                )
+                .frame(height: 140)
+                Text("Edwards TRIMP · \(metrics.maxHRIsUserSet ? "user-set" : "auto-detected") max HR · local resting HR")
+                    .font(WH.Font.caption)
+                    .foregroundStyle(WH.Color.textSecondary.opacity(0.7))
+            }
+            .padding(WH.Spacing.md)
+            .background(WH.Color.surface,
+                        in: RoundedRectangle(cornerRadius: WH.Radius.card, style: .continuous))
         }
     }
 

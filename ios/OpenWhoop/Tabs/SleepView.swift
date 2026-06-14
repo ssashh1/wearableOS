@@ -91,9 +91,11 @@ struct SleepView: View {
                 // Custom tight header (replaces the hidden system large-title nav bar)
                 ScreenHeader("Sleep")
 
-                // 1. Headline — server sleep data OR local strap estimate as fallback
+                // 1. Headline — server data > gravity-detected > strap-presence fallback
                 if detail != nil {
                     headlineSection
+                } else if let period = metrics.localSleepPeriods.max(by: { $0.durationMinutes < $1.durationMinutes }) {
+                    gravitySleepSection(period)
                 } else if let estimate = metrics.localSleepEstimate {
                     localSleepSection(estimate)
                 }
@@ -124,8 +126,8 @@ struct SleepView: View {
                     errorBanner(err)
                 }
 
-                // Empty state only when neither server data nor local estimate is available
-                if detail == nil && metrics.localSleepEstimate == nil && !metrics.isRefreshing {
+                // Empty state only when no server data, no gravity periods, and no strap estimate
+                if detail == nil && metrics.localSleepPeriods.isEmpty && metrics.localSleepEstimate == nil && !metrics.isRefreshing {
                     emptyState
                 }
 
@@ -139,7 +141,68 @@ struct SleepView: View {
         .background(WH.Color.background)
     }
 
-    // MARK: - 1a. Local sleep estimate (shown when no server data)
+    // MARK: - 1a. Gravity-detected sleep (shown when no server data but gravity available)
+    // Uses movement delta (< 0.01g = "still") on 15-min buckets.  More accurate than strap
+    // presence but less accurate than server sleep staging.
+
+    private func gravitySleepSection(_ period: SleepPeriod) -> some View {
+        VStack(alignment: .leading, spacing: WH.Spacing.sm) {
+
+            VStack(alignment: .leading, spacing: WH.Spacing.xs) {
+                Text("LAST NIGHT · MOVEMENT DETECTED")
+                    .font(WH.Font.cardTitle)
+                    .foregroundStyle(WH.Color.textSecondary)
+                    .tracking(1.2)
+
+                HStack(alignment: .lastTextBaseline, spacing: WH.Spacing.xs) {
+                    Text(formatMinutes(period.durationMinutes))
+                        .font(WH.Font.metricLarge(size: 36))
+                        .foregroundStyle(WH.Color.textPrimary)
+                        .monospacedDigit()
+                    Text("sleep")
+                        .font(WH.Font.unit)
+                        .foregroundStyle(WH.Color.textSecondary)
+                }
+
+                Text(formatTime(period.startTs) + " → " + formatTime(period.endTs))
+                    .font(WH.Font.caption)
+                    .foregroundStyle(WH.Color.textSecondary)
+            }
+            .padding(WH.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(WH.Color.surface,
+                        in: RoundedRectangle(cornerRadius: WH.Radius.card, style: .continuous))
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
+                      spacing: WH.Spacing.sm) {
+                MetricCard(
+                    title: "Resting HR",
+                    value: metrics.localRHR.map { "\(Int($0.rounded()))" } ?? "—",
+                    unit: metrics.localRHR != nil ? "bpm" : nil,
+                    accentColor: metrics.localRHR != nil ? WH.Color.textPrimary : WH.Color.textSecondary
+                )
+                MetricCard(
+                    title: "HRV",
+                    value: metrics.localHRV.map { String(format: "%.0f", $0) } ?? "—",
+                    unit: metrics.localHRV != nil ? "ms" : nil,
+                    accentColor: metrics.localHRV != nil ? WH.Color.recoveryGreen : WH.Color.textSecondary
+                )
+            }
+
+            HStack(spacing: WH.Spacing.xs) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(WH.Color.textSecondary.opacity(0.6))
+                Text("Detected from wrist movement analysis (0.01g threshold, 15-min windows). Sleep staging requires a server.")
+                    .font(WH.Font.caption)
+                    .foregroundStyle(WH.Color.textSecondary.opacity(0.6))
+                    .lineLimit(3)
+            }
+            .padding(.horizontal, WH.Spacing.xs)
+        }
+    }
+
+    // MARK: - 1b. Local sleep estimate (shown when no server data and no gravity data)
     // Derived from overnight strap HR data only — not sleep-staged.
 
     private func localSleepSection(_ estimate: LocalSleepEstimate) -> some View {
