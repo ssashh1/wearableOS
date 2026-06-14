@@ -28,11 +28,16 @@ enum StressCalculator {
 
     // MARK: - Public
 
+    // Valid RR range — matches HRVCalculator thresholds
+    static let minRR = 300
+    static let maxRR = 2000
+
     // Compute stress score from raw RR intervals in milliseconds.
     // Pass a lower min for live/real-time displays; keep the default (120) for stored data.
     static func stress(from intervals: [Int], min: Int = minIntervals) -> Double? {
-        guard intervals.count >= min else { return nil }
-        return StressParams(intervals)?.score()
+        let clean = intervals.filter { $0 >= minRR && $0 <= maxRR }
+        guard clean.count >= min else { return nil }
+        return StressParams(clean)?.score()
     }
 
     // Compute stress from WhoopProtocol RRInterval records.
