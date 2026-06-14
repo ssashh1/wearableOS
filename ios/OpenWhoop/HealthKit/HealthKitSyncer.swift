@@ -125,7 +125,8 @@ final class HealthKitSyncer {
             quantity: quantity,
             start: sampleDate,
             end: sampleDate,
-            device: Self.whoopDevice
+            device: Self.whoopDevice,
+            metadata: nil
         )
 
         do {
