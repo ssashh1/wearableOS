@@ -11,6 +11,7 @@ import Charts
 
 struct NowView: View {
     @EnvironmentObject private var live: LiveViewModel
+    @EnvironmentObject private var metrics: MetricsRepository
 
     @State private var pulsing = false
 
@@ -234,21 +235,44 @@ struct NowView: View {
 
     // MARK: - Steps row
 
+    // MARK: - Steps row
+    //
+    // Source selection:
+    //   Connected  → WHOOP IMU (type-43 R10/R11 stream, 100 Hz, sessionSteps)
+    //                The WHOOP's raw accel at 100 Hz can detect individual step peaks.
+    //   Disconnected → HealthKit daily total (iPhone pedometer runs 24/7 regardless of
+    //                  WHOOP connection, so it covers all offline time automatically).
+    //
+    // The WHOOP's offline historical buffer only stores one averaged gravity vector per
+    // record (~1 Hz), which is too coarse for step detection — it is used by SleepDetector
+    // but cannot count individual steps. HealthKit fills that gap perfectly.
+
     private var stepsRow: some View {
-        let steps = live.state.sessionSteps
+        // When connected and the IMU stream has accumulated steps, show WHOOP session steps.
+        // Otherwise fall back to HealthKit's daily total (covers the disconnected period).
+        let useWHOOP = live.state.connected && live.state.sessionSteps > 0
+        let label    = useWHOOP ? "STEPS THIS SESSION" : "STEPS TODAY"
+        let source   = useWHOOP ? "WHOOP" : "iPhone"
+        let value: Int? = useWHOOP ? live.state.sessionSteps : metrics.todaySteps
+
         return HStack(spacing: WH.Spacing.md) {
             Image(systemName: "figure.walk")
                 .font(.system(size: 22, weight: .light))
                 .foregroundStyle(WH.Color.teal.opacity(0.7))
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
-                Text("STEPS THIS SESSION")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(WH.Color.textSecondary)
-                    .tracking(1.0)
-                if steps > 0 {
+                HStack(spacing: 4) {
+                    Text(label)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(WH.Color.textSecondary)
+                        .tracking(1.0)
+                    Text("· \(source)")
+                        .font(.system(size: 9, weight: .regular))
+                        .foregroundStyle(WH.Color.textSecondary.opacity(0.6))
+                }
+                if let v = value {
                     HStack(alignment: .lastTextBaseline, spacing: 4) {
-                        Text(steps.formatted())
+                        Text(v.formatted())
                             .font(WH.Font.metricMedium(size: 26))
                             .foregroundStyle(WH.Color.textPrimary)
                             .monospacedDigit()
