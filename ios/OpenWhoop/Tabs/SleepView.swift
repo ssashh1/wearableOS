@@ -64,6 +64,7 @@ struct SleepView: View {
     // MARK: - Data loading
 
     private func loadData() async {
+        live.ensureActive()
         await metrics.refresh()
         detail = await metrics.sleepDetail()
         weekNights = await metrics.sevenNightSleepWake(nights: 7)

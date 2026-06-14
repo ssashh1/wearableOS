@@ -35,6 +35,8 @@ struct NowView: View {
         }
         .preferredColorScheme(.dark)
         .onChange(of: live.state.heartRate) { _ in triggerPulse() }
+        .task { live.ensureActive() }
+        .refreshable { live.ensureActive() }
     }
 
     // MARK: - Disconnected banner

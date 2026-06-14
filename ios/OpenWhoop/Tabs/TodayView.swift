@@ -28,14 +28,18 @@ struct TodayView: View {
         }
         .preferredColorScheme(.dark)
         .task {
-            // First load immediately, then refresh every 60 s while visible so live-persisted
-            // HR data (from the realtime BLE stream) appears without a manual pull-to-refresh.
+            // On first load: connect + start HR + get battery + sync, then refresh every 60 s
+            // so live-persisted HR data appears without a manual pull-to-refresh.
+            live.ensureActive()
             while !Task.isCancelled {
                 await metrics.refresh()
                 try? await Task.sleep(for: .seconds(60))
             }
         }
-        .refreshable { await metrics.refresh() }
+        .refreshable {
+            live.ensureActive()
+            await metrics.refresh()
+        }
     }
 
     // MARK: - Loading

@@ -91,6 +91,19 @@ public final class LiveViewModel: ObservableObject {
     /// User tapped "Sync now" — force an offload regardless of the periodic floor.
     public func syncNow() { ble.requestSync(.manual) }
 
+    /// Called on pull-to-refresh and on first app load.
+    /// If connected: starts HR streaming (idempotent), polls battery, kicks a sync.
+    /// If disconnected: begins a scan/reconnect attempt.
+    public func ensureActive() {
+        if state.connected {
+            startRealtimeHR()
+            getBattery()
+            syncNow()
+        } else {
+            connect()
+        }
+    }
+
     /// Refresh the storage summary line from the store (polled every few seconds by LiveView).
     public func refreshStorage() {
         Task { @MainActor in

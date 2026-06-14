@@ -13,6 +13,7 @@ import WhoopStore
 
 struct TrendsView: View {
     @EnvironmentObject private var metrics: MetricsRepository
+    @EnvironmentObject private var live: LiveViewModel
 
     // MARK: - State
 
@@ -57,7 +58,8 @@ struct TrendsView: View {
         }
         .preferredColorScheme(.dark)
         .task {
-            // Refresh immediately, then every 60 s so live-persisted HR appears automatically.
+            // On first load: activate WHOOP, then refresh every 60 s so live-persisted HR appears.
+            live.ensureActive()
             while !Task.isCancelled {
                 await metrics.refresh()
                 await reloadRows()
@@ -67,6 +69,7 @@ struct TrendsView: View {
             }
         }
         .refreshable {
+            live.ensureActive()
             await metrics.refresh()
             await reloadRows()
             await reloadHR()
