@@ -132,7 +132,6 @@ final class MetricsRepository: ObservableObject {
 
         // Local metrics — all computed from raw sensor data, no server required.
         // Two targeted queries cover the overnight window (RHR + HRV) and today (HR stats).
-        let cal = Calendar.current
         let startOfToday = cal.startOfDay(for: now)
         let overnightFrom = Int(startOfToday.addingTimeInterval(-4 * 3600).timeIntervalSince1970)
         let overnightTo   = Int(startOfToday.addingTimeInterval(10 * 3600).timeIntervalSince1970)
