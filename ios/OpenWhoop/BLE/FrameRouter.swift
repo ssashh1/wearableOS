@@ -27,11 +27,16 @@ public final class FrameRouter {
         case "REALTIME_DATA":
             if let hr = parsed.parsed["heart_rate"]?.intValue {
                 state.heartRate = hr
+                if state.sessionStartedAt == nil { state.sessionStartedAt = Date() }
+                state.hrHistory.append(LiveHRPoint(bpm: hr))
+                if state.hrHistory.count > 300 { state.hrHistory.removeFirst() }
             }
             // The realtime stream usually reports rr_count=0; only update R-R when this frame
             // actually carries intervals, so we don't wipe R-R sourced from the 0x2A37 profile.
             if let rr = parsed.parsed["rr_intervals"]?.intArrayValue, !rr.isEmpty {
                 state.rr = rr
+                state.rrHistory.append(contentsOf: rr)
+                if state.rrHistory.count > 500 { state.rrHistory.removeFirst(state.rrHistory.count - 500) }
             }
 
         case "COMMAND_RESPONSE":

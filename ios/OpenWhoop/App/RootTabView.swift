@@ -8,6 +8,11 @@ struct RootTabView: View {
                     Label("Today", systemImage: "house")
                 }
 
+            NowView()
+                .tabItem {
+                    Label("Now", systemImage: "waveform.path.ecg")
+                }
+
             SleepView()
                 .tabItem {
                     Label("Sleep", systemImage: "bed.double")

@@ -1,6 +1,22 @@
 import Foundation
 import Combine
 
+// MARK: - LiveHRPoint
+
+/// A single live heart-rate reading with a wall-clock timestamp.
+public struct LiveHRPoint: Identifiable, Equatable {
+    public let id: UUID
+    public let ts: Date
+    public let bpm: Int
+    public init(bpm: Int) {
+        id  = UUID()
+        ts  = Date()
+        self.bpm = bpm
+    }
+}
+
+// MARK: - LiveState
+
 /// Observable snapshot of the live connection + biometric state, driven by FrameRouter
 /// (from decoded frames) and BLEManager (from CoreBluetooth callbacks).
 /// `@MainActor` so SwiftUI views observe it safely; mutators are called on the main queue.
@@ -13,6 +29,13 @@ public final class LiveState: ObservableObject {
     @Published public var batteryPct: Double? = nil
     @Published public var lastFrameType: String? = nil
     @Published public var lastEvent: String? = nil
+
+    // Rolling live buffers used by NowView — capped to avoid unbounded growth.
+    // hrHistory: last 300 readings ≈ 5 minutes at 1 Hz.
+    // rrHistory: last 500 RR intervals ≈ 6–8 minutes of beat-to-beat data.
+    @Published public var hrHistory: [LiveHRPoint] = []
+    @Published public var rrHistory: [Int] = []
+    @Published public var sessionStartedAt: Date? = nil
     /// Rolling log of human-readable lines for the on-device verification checklist.
     @Published public var log: [String] = []
 
