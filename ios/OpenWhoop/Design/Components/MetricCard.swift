@@ -13,6 +13,17 @@ struct MetricCard<Accessory: View>: View {
     var accentColor: Color = WH.Color.textPrimary
     var accessory: (() -> Accessory)?
 
+    // Designated init — suppresses the synthesized memberwise init so the extension
+    // inits below (EmptyView convenience + @ViewBuilder accessory) are unambiguous.
+    fileprivate init(title: String, value: String, unit: String?,
+                     accentColor: Color, accessory: (() -> Accessory)?) {
+        self.title = title
+        self.value = value
+        self.unit = unit
+        self.accentColor = accentColor
+        self.accessory = accessory
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: WH.Spacing.sm) {
 
@@ -59,6 +70,18 @@ extension MetricCard where Accessory == EmptyView {
         self.unit = unit
         self.accentColor = accentColor
         self.accessory = nil
+    }
+}
+
+// Trailing-closure init with @ViewBuilder so callers can use if/else inside the accessory
+extension MetricCard {
+    init(title: String, value: String, unit: String? = nil, accentColor: Color = WH.Color.textPrimary,
+         @ViewBuilder accessory: @escaping () -> Accessory) {
+        self.title = title
+        self.value = value
+        self.unit = unit
+        self.accentColor = accentColor
+        self.accessory = accessory
     }
 }
 

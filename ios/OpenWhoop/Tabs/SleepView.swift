@@ -91,21 +91,27 @@ struct SleepView: View {
                 // Custom tight header (replaces the hidden system large-title nav bar)
                 ScreenHeader("Sleep")
 
-                // 1. Headline — efficiency hero + total duration
-                headlineSection
-
-                // 2. Hypnogram
-                if let session = detail?.session {
-                    HypnogramView(session: session)
-                } else {
-                    noDataCard(icon: "moon.zzz", message: "No stage data for last night")
+                // 1. Headline — server sleep data OR local strap estimate as fallback
+                if detail != nil {
+                    headlineSection
+                } else if let estimate = metrics.localSleepEstimate {
+                    localSleepSection(estimate)
                 }
 
-                // 3. Stage breakdown + sleep stats
-                stageBreakdownSection
+                // 2. Hypnogram (server only)
+                if let session = detail?.session {
+                    HypnogramView(session: session)
+                }
 
-                // 4. In-sleep signals
-                inSleepSignalsSection
+                // 3. Stage breakdown (server only)
+                if detail != nil {
+                    stageBreakdownSection
+                }
+
+                // 4. In-sleep signals (server only)
+                if detail != nil {
+                    inSleepSignalsSection
+                }
 
                 // 5. 7-night sleep/wake chart
                 sevenNightSection
@@ -118,8 +124,8 @@ struct SleepView: View {
                     errorBanner(err)
                 }
 
-                // Empty state
-                if detail == nil && !metrics.isRefreshing {
+                // Empty state only when neither server data nor local estimate is available
+                if detail == nil && metrics.localSleepEstimate == nil && !metrics.isRefreshing {
                     emptyState
                 }
 
@@ -131,6 +137,69 @@ struct SleepView: View {
             .padding(WH.Spacing.md)
         }
         .background(WH.Color.background)
+    }
+
+    // MARK: - 1a. Local sleep estimate (shown when no server data)
+    // Derived from overnight strap HR data only — not sleep-staged.
+
+    private func localSleepSection(_ estimate: LocalSleepEstimate) -> some View {
+        VStack(alignment: .leading, spacing: WH.Spacing.sm) {
+
+            // Header with time span
+            VStack(alignment: .leading, spacing: WH.Spacing.xs) {
+                Text("LAST NIGHT · LOCAL DATA")
+                    .font(WH.Font.cardTitle)
+                    .foregroundStyle(WH.Color.textSecondary)
+                    .tracking(1.2)
+
+                HStack(alignment: .lastTextBaseline, spacing: WH.Spacing.xs) {
+                    Text(formatMinutes(estimate.durationMinutes))
+                        .font(WH.Font.metricLarge(size: 36))
+                        .foregroundStyle(WH.Color.textPrimary)
+                        .monospacedDigit()
+                    Text("in strap")
+                        .font(WH.Font.unit)
+                        .foregroundStyle(WH.Color.textSecondary)
+                }
+
+                Text(formatTime(estimate.wristOnTs) + " → " + formatTime(estimate.wristOffTs))
+                    .font(WH.Font.caption)
+                    .foregroundStyle(WH.Color.textSecondary)
+            }
+            .padding(WH.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(WH.Color.surface,
+                        in: RoundedRectangle(cornerRadius: WH.Radius.card, style: .continuous))
+
+            // RHR + HRV tiles
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
+                      spacing: WH.Spacing.sm) {
+                MetricCard(
+                    title: "Resting HR",
+                    value: estimate.rhr.map { "\(Int($0.rounded()))" } ?? "—",
+                    unit: estimate.rhr != nil ? "bpm" : nil,
+                    accentColor: estimate.rhr != nil ? WH.Color.textPrimary : WH.Color.textSecondary
+                )
+                MetricCard(
+                    title: "HRV",
+                    value: estimate.hrv.map { String(format: "%.0f", $0) } ?? "—",
+                    unit: estimate.hrv != nil ? "ms" : nil,
+                    accentColor: estimate.hrv != nil ? WH.Color.recoveryGreen : WH.Color.textSecondary
+                )
+            }
+
+            // Disclaimer
+            HStack(spacing: WH.Spacing.xs) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(WH.Color.textSecondary.opacity(0.6))
+                Text("Strap-presence duration, not sleep duration. Sleep staging requires a server.")
+                    .font(WH.Font.caption)
+                    .foregroundStyle(WH.Color.textSecondary.opacity(0.6))
+                    .lineLimit(2)
+            }
+            .padding(.horizontal, WH.Spacing.xs)
+        }
     }
 
     // MARK: - 1. Headline section

@@ -220,13 +220,16 @@ struct TodayView: View {
     }
 
     private var hrvCard: some View {
-        let hrv = metrics.localHRV ?? metrics.today?.avgHrv ?? metrics.lastNight?.avgHrv
-        let value = hrv.map { String(format: "%.0f", $0) } ?? "—"
+        let hrv     = metrics.localHRV ?? metrics.today?.avgHrv ?? metrics.lastNight?.avgHrv
+        let value   = hrv.map { String(format: "%.0f", $0) } ?? "—"
         let accent: Color = hrv != nil ? WH.Color.recoveryGreen : WH.Color.textSecondary
-        return MetricCard(title: "HRV",
-                          value: value,
-                          unit: hrv != nil ? "ms" : nil,
-                          accentColor: accent)
+        let history = metrics.localHRVHistory
+        return MetricCard(title: "HRV", value: value, unit: hrv != nil ? "ms" : nil, accentColor: accent) {
+            if history.count >= 2 {
+                Sparkline(data: history, color: WH.Color.recoveryGreen, showArea: false)
+                    .frame(height: 32)
+            }
+        }
     }
 
     private var rhrCard: some View {
@@ -234,12 +237,15 @@ struct TodayView: View {
         let rhrValue = metrics.localRHR.map { Int($0.rounded()) }
                        ?? metrics.today?.restingHr
                        ?? metrics.lastNight?.restingHr
-        let value  = rhrValue.map { "\($0)" } ?? "—"
+        let value    = rhrValue.map { "\($0)" } ?? "—"
         let accent: Color = rhrValue != nil ? WH.Color.textPrimary : WH.Color.textSecondary
-        return MetricCard(title: "Resting HR",
-                          value: value,
-                          unit: rhrValue != nil ? "bpm" : nil,
-                          accentColor: accent)
+        let history  = metrics.localRHRHistory
+        return MetricCard(title: "Resting HR", value: value, unit: rhrValue != nil ? "bpm" : nil, accentColor: accent) {
+            if history.count >= 2 {
+                Sparkline(data: history, color: WH.Color.strainBlue, showArea: false)
+                    .frame(height: 32)
+            }
+        }
     }
 
     // MARK: - Today's HR card

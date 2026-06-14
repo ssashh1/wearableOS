@@ -23,6 +23,9 @@ final class MetricsRepository: ObservableObject {
     @Published private(set) var localHRV: Double?              // locally-computed overnight RMSSD (ms)
     @Published private(set) var localRHR: Double?              // locally-computed overnight min 5-min avg HR
     @Published private(set) var todayStats: TodayHRStats?      // today's HR summary (avg, peak, elevated)
+    @Published private(set) var localHRVHistory: [Double] = [] // 7-night RMSSD history, oldest→newest
+    @Published private(set) var localRHRHistory: [Double] = [] // 7-night RHR history, oldest→newest
+    @Published private(set) var localSleepEstimate: LocalSleepEstimate? // overnight strap data (no staging)
     @Published private(set) var isRefreshing = false
     @Published private(set) var lastError: String?
     @Published private(set) var lastRefreshedAt: Date?
@@ -131,29 +134,73 @@ final class MetricsRepository: ObservableObject {
                                                     limit: 50))?.last
 
         // Local metrics — all computed from raw sensor data, no server required.
-        // Two targeted queries cover the overnight window (RHR + HRV) and today (HR stats).
-        let startOfToday = cal.startOfDay(for: now)
-        let overnightFrom = Int(startOfToday.addingTimeInterval(-4 * 3600).timeIntervalSince1970)
-        let overnightTo   = Int(startOfToday.addingTimeInterval(10 * 3600).timeIntervalSince1970)
-        let todayFrom     = Int(startOfToday.timeIntervalSince1970)
+        let startOfToday     = cal.startOfDay(for: now)
+        let startOfTodayEpoch = Int(startOfToday.timeIntervalSince1970)
+
+        // Overnight window: yesterday 8 PM → today 10 AM (covers most sleep schedules)
+        let overnightFrom = startOfTodayEpoch - 4 * 3600
+        let overnightTo   = startOfTodayEpoch + 10 * 3600
+        let todayFrom     = startOfTodayEpoch
         let todayTo       = Int(now.timeIntervalSince1970)
 
-        // Overnight R-R → HRV
+        // Overnight R-R → current HRV
         let overnightRR = (try? await store.rrIntervals(
             deviceId: deviceId, from: overnightFrom, to: overnightTo, limit: 100_000
         )) ?? []
         localHRV = HRVCalculator.overnightRMSSD(from: overnightRR)
 
-        // Overnight HR → RHR; today's HR → summary stats
+        // Overnight HR → current RHR + local sleep estimate
         let overnightHR = (try? await store.hrSamples(
             deviceId: deviceId, from: overnightFrom, to: overnightTo, limit: 100_000
         )) ?? []
         localRHR = LocalMetrics.rhr(from: overnightHR)
 
+        if let first = overnightHR.first, let last = overnightHR.last {
+            let durMin = Double(last.ts - first.ts) / 60.0
+            if durMin >= 30 {
+                let avgBPM = Int((Double(overnightHR.map(\.bpm).reduce(0, +)) / Double(overnightHR.count)).rounded())
+                localSleepEstimate = LocalSleepEstimate(
+                    wristOnTs: first.ts, wristOffTs: last.ts,
+                    durationMinutes: durMin, avgBPM: avgBPM,
+                    rhr: localRHR, hrv: localHRV)
+            } else {
+                localSleepEstimate = nil
+            }
+        } else {
+            localSleepEstimate = nil
+        }
+
+        // Today HR → summary stats
         let todayHR = (try? await store.hrSamples(
             deviceId: deviceId, from: todayFrom, to: todayTo, limit: 100_000
         )) ?? []
         todayStats = LocalMetrics.todayStats(from: todayHR)
+
+        // 7-night sparkline history: one wide query per sensor, filtered in-memory per night.
+        // histFrom covers oldest night (7 nights ago at 8 PM) to tonight's window end.
+        let histFrom = startOfTodayEpoch - 7 * 86_400 - 4 * 3600
+        let histTo   = overnightTo
+
+        let histRR = (try? await store.rrIntervals(
+            deviceId: deviceId, from: histFrom, to: histTo, limit: 500_000
+        )) ?? []
+        let histHR = (try? await store.hrSamples(
+            deviceId: deviceId, from: histFrom, to: histTo, limit: 500_000
+        )) ?? []
+
+        // i=6 → oldest night (6 days ago), i=0 → current overnight; append oldest first
+        var hrvHist: [Double] = []
+        var rhrHist: [Double] = []
+        for i in stride(from: 6, through: 0, by: -1) {
+            let nFrom = startOfTodayEpoch - i * 86_400 - 4 * 3600
+            let nTo   = startOfTodayEpoch - i * 86_400 + 10 * 3600
+            let nRR   = histRR.filter { $0.ts >= nFrom && $0.ts <= nTo }
+            let nHR   = histHR.filter { $0.ts >= nFrom && $0.ts <= nTo }
+            if let h = HRVCalculator.rmssd(nRR.map(\.rrMs)) { hrvHist.append(h) }
+            if let r = LocalMetrics.rhr(from: nHR)           { rhrHist.append(r) }
+        }
+        localHRVHistory = hrvHist
+        localRHRHistory = rhrHist
     }
 
     // MARK: - Refresh from server then reload
@@ -323,5 +370,21 @@ final class MetricsRepository: ObservableObject {
     func backfillWorkouts(from: String, to: String) async -> Bool {
         await ensureOpen()
         return await serverSync?.backfillWorkouts(from: from, to: to) ?? false
+    }
+
+    // MARK: - Local activity detection (no server)
+
+    /// Detect elevated-HR activity bouts from the local hr_samples store.
+    /// Uses WorkoutDetector (≥10 min sustained >100 BPM). Returns newest-first.
+    /// Returns [] when there is no local data — never returns guessed results.
+    func localActivities(lastDays: Int = 30) async -> [DetectedActivity] {
+        await ensureOpen()
+        guard let store else { return [] }
+        let now  = Int(Date().timeIntervalSince1970)
+        let from = now - lastDays * 86_400
+        let samples = (try? await store.hrSamples(
+            deviceId: deviceId, from: from, to: now, limit: 200_000
+        )) ?? []
+        return WorkoutDetector.detect(from: samples)
     }
 }

@@ -1,8 +1,8 @@
 import SwiftUI
 
 // MARK: - WorkoutsView
-// M5 Workouts tab — shows auto-detected workout bouts from /v1/workouts (last 30 days).
-// Data is fetched directly from the server (no local cache); refresh on .task + pull-to-refresh.
+// Shows auto-detected workout bouts. Prefers server workouts when available;
+// falls back to locally-detected activity bouts (≥10 min sustained >100 BPM) otherwise.
 
 struct WorkoutsView: View {
     @EnvironmentObject private var metrics: MetricsRepository
@@ -10,6 +10,7 @@ struct WorkoutsView: View {
     // MARK: - State
 
     @State private var workouts: [Workout] = []
+    @State private var localActivities: [DetectedActivity] = []
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
 
@@ -66,10 +67,13 @@ struct WorkoutsView: View {
                         .padding(.top, WH.Spacing.sm)
                 }
 
-                if workouts.isEmpty {
-                    emptyState
-                } else {
+                if !workouts.isEmpty {
                     workoutList
+                } else if !localActivities.isEmpty {
+                    localActivityBanner
+                    localActivityList
+                } else {
+                    emptyState
                 }
             }
         }
@@ -173,6 +177,81 @@ struct WorkoutsView: View {
         .frame(width: 52, alignment: .center)
     }
 
+    // MARK: - Local activity banner
+
+    private var localActivityBanner: some View {
+        HStack(spacing: WH.Spacing.xs) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(WH.Color.textSecondary)
+            Text("Locally detected · periods ≥10 min sustained >100 bpm")
+                .font(WH.Font.caption)
+                .foregroundStyle(WH.Color.textSecondary)
+            Spacer()
+        }
+        .padding(.horizontal, WH.Spacing.md)
+        .padding(.top, WH.Spacing.xs)
+    }
+
+    // MARK: - Local activity list
+
+    private var localActivityList: some View {
+        VStack(spacing: 1) {
+            ForEach(localActivities) { activity in
+                localActivityRow(activity)
+            }
+        }
+        .background(WH.Color.surface,
+                    in: RoundedRectangle(cornerRadius: WH.Radius.card, style: .continuous))
+        .padding(WH.Spacing.md)
+    }
+
+    private func localActivityRow(_ a: DetectedActivity) -> some View {
+        HStack(spacing: WH.Spacing.sm) {
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rowDate(a.startTs))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(WH.Color.textPrimary)
+                Text(rowTime(a.startTs))
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(WH.Color.textSecondary)
+            }
+            .frame(width: 72, alignment: .leading)
+
+            Text(formatDuration(a.durationSeconds))
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(WH.Color.textSecondary)
+                .frame(width: 44, alignment: .leading)
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("\(a.avgBPM)")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(WH.Color.textPrimary)
+                    .monospacedDigit()
+                Text("avg bpm")
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundStyle(WH.Color.textSecondary)
+            }
+            .frame(width: 52, alignment: .trailing)
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("\(a.peakBPM)")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(WH.Color.strainBlue)
+                    .monospacedDigit()
+                Text("peak")
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundStyle(WH.Color.textSecondary)
+            }
+            .frame(width: 40, alignment: .trailing)
+        }
+        .padding(.horizontal, WH.Spacing.md)
+        .padding(.vertical, WH.Spacing.sm)
+    }
+
     // MARK: - Empty state
 
     private var emptyState: some View {
@@ -180,10 +259,10 @@ struct WorkoutsView: View {
             Image(systemName: "figure.run.circle")
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(WH.Color.textSecondary)
-            Text("No workouts found")
+            Text("No activity detected")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
                 .foregroundStyle(WH.Color.textPrimary)
-            Text("Workout detection is a server feature. Your heart rate data is being collected locally — local activity detection is coming in a future update.")
+            Text("Activity bouts (≥10 min >100 bpm) from the last 30 days will appear here once heart rate data has been collected.")
                 .font(WH.Font.caption)
                 .foregroundStyle(WH.Color.textSecondary)
                 .multilineTextAlignment(.center)
@@ -216,8 +295,9 @@ struct WorkoutsView: View {
     private func reload() async {
         errorMessage = nil
         let (from, to) = dateRange()
-        let result = await metrics.workouts(from: from, to: to)
-        workouts = result
+        workouts = await metrics.workouts(from: from, to: to)
+        // Fall back to local threshold-based detection when no server workouts available
+        localActivities = workouts.isEmpty ? await metrics.localActivities() : []
         if isLoading { isLoading = false }
     }
 

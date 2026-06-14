@@ -15,6 +15,18 @@ struct TodayHRStats {
     let elevatedMinutes: Int   // 60-second buckets whose average HR exceeds 100 BPM
 }
 
+// MARK: - LocalSleepEstimate
+// Derived from overnight HR samples only. Not sleep-staged — shows strap presence, not sleep quality.
+
+struct LocalSleepEstimate {
+    let wristOnTs: Int         // epoch of first HR sample in overnight window
+    let wristOffTs: Int        // epoch of last HR sample in overnight window
+    let durationMinutes: Double
+    let avgBPM: Int
+    let rhr: Double?           // min 5-min avg HR from the same window
+    let hrv: Double?           // RMSSD from overnight R-R intervals
+}
+
 // MARK: - LocalMetrics
 
 enum LocalMetrics {
