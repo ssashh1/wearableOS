@@ -36,6 +36,7 @@ public final class LiveState: ObservableObject {
     @Published public var hrHistory: [LiveHRPoint] = []
     @Published public var rrHistory: [Int] = []
     @Published public var sessionStartedAt: Date? = nil
+    @Published public var sessionSteps: Int = 0      // steps counted from WHOOP IMU this session
     /// Rolling log of human-readable lines for the on-device verification checklist.
     @Published public var log: [String] = []
 

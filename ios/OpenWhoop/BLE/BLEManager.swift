@@ -619,6 +619,7 @@ extension BLEManager: @preconcurrency CBCentralManagerDelegate {
         Task { @MainActor in await collector?.flush() }
         router.flushPendingPersist()
         state.connected = false
+        state.sessionSteps = 0
         didBond = false
         clockRequested = false
         connectHandshakeDone = false

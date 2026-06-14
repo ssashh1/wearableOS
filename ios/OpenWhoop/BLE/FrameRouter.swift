@@ -75,6 +75,14 @@ public final class FrameRouter {
                 Task { try? await store.insert(Streams(hr: hr, rr: rr), deviceId: deviceId) }
             }
 
+        case "REALTIME_RAW_DATA":
+            // IMU variant (1928-byte frame): count steps from raw accel block.
+            let steps = WhoopPedometer.countSteps(frame: frame)
+            if steps > 0 {
+                if state.sessionStartedAt == nil { state.sessionStartedAt = Date() }
+                state.sessionSteps += steps
+            }
+
         case "COMMAND_RESPONSE":
             if let pct = parsed.parsed["battery_pct"]?.doubleValue {
                 state.setBattery(pct)

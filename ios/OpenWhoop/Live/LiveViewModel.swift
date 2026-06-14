@@ -43,6 +43,10 @@ public final class LiveViewModel: ObservableObject {
     public func startRealtimeHR() { ble.send(.toggleRealtimeHR, payload: [0x01]) }
     public func stopRealtimeHR()  { ble.send(.toggleRealtimeHR, payload: [0x00]) }
     public func getBattery()      { ble.send(.getBatteryLevel,  payload: [0x00]) }
+    // Enable/disable the R10/R11 continuous IMU stream (type-43 packets at ~1/s).
+    // Used for real-time step counting via WhoopPedometer.
+    public func startRealtimeIMU() { ble.send(.sendR10R11Realtime, payload: [0x01]) }
+    public func stopRealtimeIMU()  { ble.send(.sendR10R11Realtime, payload: [0x00]) }
 
     /// Fire a preset haptic pattern on the strap (makes it buzz). `pattern` indexes the device's
     /// preset patterns; `loops` is the repeat count. Confirmed write so the strap acks it.
@@ -98,6 +102,7 @@ public final class LiveViewModel: ObservableObject {
     public func ensureActive() {
         if state.connected {
             startRealtimeHR()
+            startRealtimeIMU()
             getBattery()
             syncNow()
         } else {

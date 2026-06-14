@@ -11,7 +11,6 @@ import Charts
 
 struct NowView: View {
     @EnvironmentObject private var live: LiveViewModel
-    @EnvironmentObject private var metrics: MetricsRepository
 
     @State private var pulsing = false
 
@@ -236,17 +235,18 @@ struct NowView: View {
     // MARK: - Steps row
 
     private var stepsRow: some View {
-        HStack(spacing: WH.Spacing.md) {
+        let steps = live.state.sessionSteps
+        return HStack(spacing: WH.Spacing.md) {
             Image(systemName: "figure.walk")
                 .font(.system(size: 22, weight: .light))
                 .foregroundStyle(WH.Color.teal.opacity(0.7))
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
-                Text("STEPS TODAY")
+                Text("STEPS THIS SESSION")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(WH.Color.textSecondary)
                     .tracking(1.0)
-                if let steps = metrics.todaySteps {
+                if steps > 0 {
                     HStack(alignment: .lastTextBaseline, spacing: 4) {
                         Text(steps.formatted())
                             .font(WH.Font.metricMedium(size: 26))
@@ -258,7 +258,7 @@ struct NowView: View {
                             .foregroundStyle(WH.Color.textSecondary)
                     }
                 } else {
-                    Text("—")
+                    Text(live.state.connected ? "Counting…" : "—")
                         .font(WH.Font.metricMedium(size: 26))
                         .foregroundStyle(WH.Color.textSecondary)
                 }
