@@ -29,8 +29,9 @@ enum StressCalculator {
     // MARK: - Public
 
     // Compute stress score from raw RR intervals in milliseconds.
-    static func stress(from intervals: [Int]) -> Double? {
-        guard intervals.count >= minIntervals else { return nil }
+    // Pass a lower min for live/real-time displays; keep the default (120) for stored data.
+    static func stress(from intervals: [Int], min: Int = minIntervals) -> Double? {
+        guard intervals.count >= min else { return nil }
         return StressParams(intervals)?.score()
     }
 

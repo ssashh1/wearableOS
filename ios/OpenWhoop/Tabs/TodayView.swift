@@ -117,8 +117,9 @@ struct TodayView: View {
     @ViewBuilder
     private var liveNowSection: some View {
         if live.state.connected {
-            let liveHRV    = HRVCalculator.rmssd(live.state.rrHistory)
-            let liveStress = StressCalculator.stress(from: live.state.rrHistory)
+            let liveHRV    = HRVCalculator.rmssd(live.state.rrHistory, minPairs: 15)
+            let liveStress = StressCalculator.stress(from: live.state.rrHistory, min: 30)
+                          ?? StressCalculator.stress(from: live.state.hrHistory.map { Int((60_000.0 / Double($0.bpm)).rounded()) }, min: 30)
 
             VStack(alignment: .leading, spacing: WH.Spacing.sm) {
                 HStack {

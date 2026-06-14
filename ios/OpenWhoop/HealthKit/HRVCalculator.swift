@@ -19,8 +19,10 @@ enum HRVCalculator {
     // MARK: - Core algorithm
 
     // Compute RMSSD from an array of successive R-R intervals (milliseconds).
-    // Returns nil when there are fewer than minPairs clean values.
-    static func rmssd(_ intervals: [Int]) -> Double? {
+    // Returns nil when there are fewer than `minPairs` clean values.
+    // Pass a lower minPairs for live/real-time displays; keep the default (60) for
+    // overnight computation where stability matters more than responsiveness.
+    static func rmssd(_ intervals: [Int], minPairs: Int = minPairs) -> Double? {
         let clean = intervals.filter { $0 >= minRR && $0 <= maxRR }
         guard clean.count > minPairs else { return nil }
         var sumSqDiff = 0.0

@@ -15,8 +15,19 @@ struct NowView: View {
 
     @State private var pulsing = false
 
-    private var liveHRV: Double? { HRVCalculator.rmssd(live.state.rrHistory) }
-    private var liveStress: Double? { StressCalculator.stress(from: live.state.rrHistory) }
+    // Live thresholds are lower than overnight so metrics appear within ~20s of RR data
+    // arriving rather than waiting 1-2 minutes. Still real data, just a shorter window.
+    private var liveHRV: Double? {
+        HRVCalculator.rmssd(live.state.rrHistory, minPairs: 15)
+    }
+    private var liveStress: Double? {
+        let rr = live.state.rrHistory
+        if let s = StressCalculator.stress(from: rr, min: 30) { return s }
+        // Fallback: derive RR from hrHistory when beat-to-beat data is sparse.
+        // 60000/bpm gives the expected interval — captures BPM variability for Baevsky.
+        let derived = live.state.hrHistory.map { Int((60_000.0 / Double($0.bpm)).rounded()) }
+        return StressCalculator.stress(from: derived, min: 30)
+    }
     private var currentZone: HRZone { live.state.heartRate.map(HRZone.init) ?? .resting }
 
     var body: some View {
