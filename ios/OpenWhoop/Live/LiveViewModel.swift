@@ -25,6 +25,7 @@ public final class LiveViewModel: ObservableObject {
         SyncNudge.requestAuthorization()
         RecoveryNotifier.requestAuthorization()
         HealthKitSyncer.requestAuthorization()
+        StepCounter.requestAuthorization()
         s.$lastSyncedAt
             .compactMap { $0 }
             .sink { _ in SyncNudge.reschedule() }

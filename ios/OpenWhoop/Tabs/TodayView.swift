@@ -90,6 +90,9 @@ struct TodayView: View {
                 }
                 .buttonStyle(.plain)
 
+                // Steps — HealthKit pedometer, today midnight→now
+                stepsCard
+
                 if let err = metrics.lastError {
                     errorBanner(err)
                 }
@@ -396,6 +399,39 @@ struct TodayView: View {
         .padding(WH.Spacing.md)
         .background(WH.Color.surface,
                     in: RoundedRectangle(cornerRadius: WH.Radius.card, style: .continuous))
+    }
+
+    // MARK: - Steps card (HealthKit pedometer, today midnight→now)
+
+    @ViewBuilder
+    private var stepsCard: some View {
+        if let steps = metrics.todaySteps {
+            HStack(spacing: WH.Spacing.md) {
+                VStack(alignment: .leading, spacing: WH.Spacing.xs) {
+                    Text("STEPS TODAY")
+                        .font(WH.Font.cardTitle)
+                        .foregroundStyle(WH.Color.textSecondary)
+                        .tracking(1.2)
+                    HStack(alignment: .lastTextBaseline, spacing: 4) {
+                        Text(steps.formatted())
+                            .font(WH.Font.metricMedium())
+                            .foregroundStyle(WH.Color.textPrimary)
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                        Text("steps")
+                            .font(WH.Font.unit)
+                            .foregroundStyle(WH.Color.textSecondary)
+                    }
+                }
+                Spacer()
+                Image(systemName: "figure.walk")
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundStyle(WH.Color.teal.opacity(0.7))
+            }
+            .padding(WH.Spacing.md)
+            .background(WH.Color.surface,
+                        in: RoundedRectangle(cornerRadius: WH.Radius.card, style: .continuous))
+        }
     }
 
     // MARK: - HRV + RHR row

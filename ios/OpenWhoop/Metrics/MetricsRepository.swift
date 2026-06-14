@@ -32,6 +32,7 @@ final class MetricsRepository: ObservableObject {
     @Published private(set) var localStrain: Double?            // Edwards TRIMP 0-21 for today
     @Published private(set) var localStress: Double?            // Baevsky index 0-10 (last 2 h)
     @Published private(set) var localMaxHR: Int?                // auto-detected 95th-pct from 7-day data
+    @Published private(set) var todaySteps: Int?                  // from HealthKit pedometer, today midnight→now
     @Published private(set) var isRefreshing = false
     @Published private(set) var lastError: String?
     @Published private(set) var lastRefreshedAt: Date?
@@ -272,6 +273,9 @@ final class MetricsRepository: ObservableObject {
                 localStress = nil
             }
         }
+
+        // Steps: read today's cumulative total from HealthKit (iPhone pedometer coprocessor).
+        todaySteps = await StepCounter.todaySteps()
     }
 
     // MARK: - Refresh from server then reload

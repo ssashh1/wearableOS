@@ -11,6 +11,7 @@ import Charts
 
 struct NowView: View {
     @EnvironmentObject private var live: LiveViewModel
+    @EnvironmentObject private var metrics: MetricsRepository
 
     @State private var pulsing = false
 
@@ -28,6 +29,7 @@ struct NowView: View {
                     heroCard
                     chartCard
                     metricsGrid
+                    stepsRow
                     Spacer(minLength: WH.Spacing.xl)
                 }
                 .padding(WH.Spacing.md)
@@ -229,6 +231,43 @@ struct NowView: View {
                 accentColor: batteryColor
             )
         }
+    }
+
+    // MARK: - Steps row
+
+    private var stepsRow: some View {
+        HStack(spacing: WH.Spacing.md) {
+            Image(systemName: "figure.walk")
+                .font(.system(size: 22, weight: .light))
+                .foregroundStyle(WH.Color.teal.opacity(0.7))
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("STEPS TODAY")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(WH.Color.textSecondary)
+                    .tracking(1.0)
+                if let steps = metrics.todaySteps {
+                    HStack(alignment: .lastTextBaseline, spacing: 4) {
+                        Text(steps.formatted())
+                            .font(WH.Font.metricMedium(size: 26))
+                            .foregroundStyle(WH.Color.textPrimary)
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                        Text("steps")
+                            .font(WH.Font.caption)
+                            .foregroundStyle(WH.Color.textSecondary)
+                    }
+                } else {
+                    Text("—")
+                        .font(WH.Font.metricMedium(size: 26))
+                        .foregroundStyle(WH.Color.textSecondary)
+                }
+            }
+            Spacer()
+        }
+        .padding(WH.Spacing.md)
+        .background(WH.Color.surface,
+                    in: RoundedRectangle(cornerRadius: WH.Radius.card, style: .continuous))
     }
 
     // MARK: - Helpers
