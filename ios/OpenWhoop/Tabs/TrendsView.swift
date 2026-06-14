@@ -65,7 +65,10 @@ struct TrendsView: View {
             await reloadHR()
         }
         .onChange(of: selectedRange) { _ in
-            Task { await reloadRows() }
+            Task {
+                await reloadRows()
+                await reloadHR()
+            }
         }
         .sheet(item: $selectedDay) { day in
             DayDetailView(selected: day)
@@ -74,20 +77,13 @@ struct TrendsView: View {
 
     // MARK: - Data loading
 
-    /// Reload raw HR for the card: last 24 hours, 300 points (server downsamples).
-    /// If no data is returned for 24h, automatically widens to 7 days so real data shows.
+    /// Reload raw HR from the local store for the currently selected range.
+    /// Reads directly from SQLite — no server required.
     private func reloadHR() async {
         hrIsLoading = true
         let now = Int(Date().timeIntervalSince1970)
-        let from24h = now - 86_400
-        var pts = await metrics.hrSeries(fromEpoch: from24h, toEpoch: now, maxPoints: 300)
-        if pts.isEmpty {
-            // Widen to 7 days to guarantee something meaningful renders when
-            // the strap hasn't streamed live HR in the last 24 hours.
-            let from7d = now - 7 * 86_400
-            pts = await metrics.hrSeries(fromEpoch: from7d, toEpoch: now, maxPoints: 300)
-        }
-        hrPoints = pts
+        let from = now - selectedRange.rawValue * 86_400
+        hrPoints = await metrics.localHRSeries(fromEpoch: from, toEpoch: now)
         hrIsLoading = false
     }
 
@@ -360,12 +356,14 @@ struct TrendsView: View {
                 Image(systemName: "chart.xyaxis.line")
                     .font(.system(size: 36, weight: .light))
                     .foregroundStyle(WH.Color.textSecondary)
-                Text("No history yet")
+                Text("No daily history yet")
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundStyle(WH.Color.textPrimary)
-                Text("Pull down to refresh")
+                Text("Daily recovery, strain, and sleep trends require a server. Your raw heart rate history is shown in the chart above as it's collected locally.")
                     .font(WH.Font.caption)
                     .foregroundStyle(WH.Color.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, WH.Spacing.xl)
             }
             .padding(.vertical, WH.Spacing.xxl)
             Spacer()

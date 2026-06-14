@@ -15,7 +15,7 @@ struct TodayView: View {
                 WH.Color.background.ignoresSafeArea()
 
                 Group {
-                    if metrics.isRefreshing && metrics.today == nil && metrics.lastNight == nil {
+                    if metrics.isRefreshing && metrics.today == nil && metrics.lastNight == nil && metrics.todayStats == nil {
                         loadingView
                     } else {
                         scrollContent

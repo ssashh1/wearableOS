@@ -261,12 +261,36 @@ final class MetricsRepository: ObservableObject {
         return Array(sessions.suffix(nights))
     }
 
-    // MARK: - Raw HR series (downsampled stream, for Trends card + HeartRateDetailView)
+    // MARK: - Local HR series (Trends tab, no server required)
+
+    /// Read HR samples from the local store, bin into time buckets, and return the
+    /// average BPM per bucket as TrendPoints. Gaps in coverage produce no point —
+    /// the chart shows real discontinuities rather than a misleading flat line.
+    func localHRSeries(fromEpoch: Int, toEpoch: Int, maxPoints: Int = 300) async -> [TrendPoint] {
+        await ensureOpen()
+        guard let store, toEpoch > fromEpoch else { return [] }
+        let samples = (try? await store.hrSamples(
+            deviceId: deviceId, from: fromEpoch, to: toEpoch, limit: 50_000
+        )) ?? []
+        guard !samples.isEmpty else { return [] }
+        let bucketSeconds = max(1, (toEpoch - fromEpoch) / maxPoints)
+        var buckets: [Int: [Int]] = [:]
+        for s in samples {
+            buckets[(s.ts - fromEpoch) / bucketSeconds, default: []].append(s.bpm)
+        }
+        return buckets.sorted { $0.key < $1.key }.map { bucket, bpms in
+            TrendPoint(
+                id: "\(fromEpoch + bucket * bucketSeconds)",
+                date: Date(timeIntervalSince1970: TimeInterval(fromEpoch + bucket * bucketSeconds)),
+                value: Double(bpms.reduce(0, +)) / Double(bpms.count)
+            )
+        }
+    }
+
+    // MARK: - Raw HR series (server, kept for compatibility when a server is configured)
 
     /// Fetch a downsampled raw HR series from the server for a given epoch-second window.
-    /// Maps each (ts, bpm) pair to a TrendPoint so it can be fed directly to MetricChart.
-    /// Uses a single server-side max_points-capped request — NOT the incremental pager.
-    /// Returns [] on any network error or when unconfigured.
+    /// Returns [] when unconfigured — callers should prefer localHRSeries for offline use.
     func hrSeries(fromEpoch: Int, toEpoch: Int, maxPoints: Int) async -> [TrendPoint] {
         await ensureOpen()
         guard let serverSync else { return [] }
