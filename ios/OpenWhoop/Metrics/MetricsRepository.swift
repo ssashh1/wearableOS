@@ -21,6 +21,8 @@ final class MetricsRepository: ObservableObject {
     @Published private(set) var today: DailyMetric?            // most-recent cached daily row
     @Published private(set) var lastNight: CachedSleepSession? // most-recent cached sleep session
     @Published private(set) var localHRV: Double?              // locally-computed overnight RMSSD (ms)
+    @Published private(set) var localRHR: Double?              // locally-computed overnight min 5-min avg HR
+    @Published private(set) var todayStats: TodayHRStats?      // today's HR summary (avg, peak, elevated)
     @Published private(set) var isRefreshing = false
     @Published private(set) var lastError: String?
     @Published private(set) var lastRefreshedAt: Date?
@@ -128,19 +130,31 @@ final class MetricsRepository: ObservableObject {
                                                     to: windowEnd,
                                                     limit: 50))?.last
 
-        // Compute local HRV from overnight R-R intervals (yesterday 8 PM → today 10 AM).
-        localHRV = await computeLocalHRV(store: store)
-    }
-
-    private func computeLocalHRV(store: WhoopStore) async -> Double? {
+        // Local metrics — all computed from raw sensor data, no server required.
+        // Two targeted queries cover the overnight window (RHR + HRV) and today (HR stats).
         let cal = Calendar.current
-        let startOfToday = cal.startOfDay(for: Date())
-        let from = Int(startOfToday.addingTimeInterval(-4 * 3600).timeIntervalSince1970)
-        let to   = Int(startOfToday.addingTimeInterval(10 * 3600).timeIntervalSince1970)
-        let intervals = (try? await store.rrIntervals(
-            deviceId: deviceId, from: from, to: to, limit: 100_000
+        let startOfToday = cal.startOfDay(for: now)
+        let overnightFrom = Int(startOfToday.addingTimeInterval(-4 * 3600).timeIntervalSince1970)
+        let overnightTo   = Int(startOfToday.addingTimeInterval(10 * 3600).timeIntervalSince1970)
+        let todayFrom     = Int(startOfToday.timeIntervalSince1970)
+        let todayTo       = Int(now.timeIntervalSince1970)
+
+        // Overnight R-R → HRV
+        let overnightRR = (try? await store.rrIntervals(
+            deviceId: deviceId, from: overnightFrom, to: overnightTo, limit: 100_000
         )) ?? []
-        return HRVCalculator.overnightRMSSD(from: intervals)
+        localHRV = HRVCalculator.overnightRMSSD(from: overnightRR)
+
+        // Overnight HR → RHR; today's HR → summary stats
+        let overnightHR = (try? await store.hrSamples(
+            deviceId: deviceId, from: overnightFrom, to: overnightTo, limit: 100_000
+        )) ?? []
+        localRHR = LocalMetrics.rhr(from: overnightHR)
+
+        let todayHR = (try? await store.hrSamples(
+            deviceId: deviceId, from: todayFrom, to: todayTo, limit: 100_000
+        )) ?? []
+        todayStats = LocalMetrics.todayStats(from: todayHR)
     }
 
     // MARK: - Refresh from server then reload

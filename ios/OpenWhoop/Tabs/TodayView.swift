@@ -50,32 +50,35 @@ struct TodayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: WH.Spacing.lg) {
 
-                // Custom tight header (replaces the hidden system large-title nav bar)
                 ScreenHeader("Today")
 
-                // Hero recovery ring (tappable → recovery history)
+                // Hero recovery ring — server-only; shows pending ring when unconfigured
                 heroSection
 
-                // Strain card → strain history
+                // HRV + RHR: both locally computed — shown first since always available
+                hrvAndRhrRow
+
+                // Today's HR summary — local, shown whenever HR data exists for today
+                todayHRCard
+
+                // Strain — server only; shows "—" without server
                 NavigationLink(destination: MetricDetailView(kind: .strain)) {
                     strainCard
                 }
                 .buttonStyle(.plain)
 
-                // Sleep card → sleep duration history
+                // Sleep — server only; shows raw duration from local timestamps if available
                 NavigationLink(destination: MetricDetailView(kind: .sleepDuration)) {
                     sleepCard
                 }
                 .buttonStyle(.plain)
 
-                // HRV + RHR cards (half width each)
-                hrvAndRhrRow
-
                 if let err = metrics.lastError {
                     errorBanner(err)
                 }
 
-                if metrics.today == nil && metrics.lastNight == nil && !metrics.isRefreshing {
+                if metrics.today == nil && metrics.lastNight == nil
+                    && metrics.todayStats == nil && !metrics.isRefreshing {
                     emptyState
                 }
 
@@ -227,13 +230,107 @@ struct TodayView: View {
     }
 
     private var rhrCard: some View {
-        let rhr = metrics.today?.restingHr ?? metrics.lastNight?.restingHr
-        let value = rhr.map { "\($0)" } ?? "—"
-        let accent: Color = rhr != nil ? WH.Color.textPrimary : WH.Color.textSecondary
+        // Prefer locally-computed overnight min 5-min avg; fall back to server cache
+        let rhrValue = metrics.localRHR.map { Int($0.rounded()) }
+                       ?? metrics.today?.restingHr
+                       ?? metrics.lastNight?.restingHr
+        let value  = rhrValue.map { "\($0)" } ?? "—"
+        let accent: Color = rhrValue != nil ? WH.Color.textPrimary : WH.Color.textSecondary
         return MetricCard(title: "Resting HR",
                           value: value,
-                          unit: rhr != nil ? "bpm" : nil,
+                          unit: rhrValue != nil ? "bpm" : nil,
                           accentColor: accent)
+    }
+
+    // MARK: - Today's HR card
+
+    @ViewBuilder
+    private var todayHRCard: some View {
+        if let stats = metrics.todayStats {
+            VStack(alignment: .leading, spacing: WH.Spacing.sm) {
+
+                // Header row
+                HStack {
+                    Text("TODAY'S HEART RATE")
+                        .font(WH.Font.cardTitle)
+                        .foregroundStyle(WH.Color.textSecondary)
+                        .tracking(1.2)
+                    Spacer()
+                    Text(formatDataCoverage(stats.dataMinutes))
+                        .font(WH.Font.caption)
+                        .foregroundStyle(WH.Color.textSecondary)
+                }
+
+                // Three-column stat row
+                HStack(spacing: 0) {
+                    hrStatColumn(label: "AVG",
+                                 value: "\(stats.avgBPM)",
+                                 unit: "bpm",
+                                 color: WH.Color.textPrimary)
+
+                    columnDivider
+
+                    hrStatColumn(label: "PEAK",
+                                 value: "\(stats.peakBPM)",
+                                 unit: "bpm",
+                                 color: peakHRColor(stats.peakBPM))
+
+                    columnDivider
+
+                    hrStatColumn(label: "ELEVATED",
+                                 value: "\(stats.elevatedMinutes)",
+                                 unit: "min >100",
+                                 color: stats.elevatedMinutes > 0
+                                    ? WH.Color.strainBlue
+                                    : WH.Color.textSecondary)
+                }
+            }
+            .padding(WH.Spacing.md)
+            .background(WH.Color.surface,
+                        in: RoundedRectangle(cornerRadius: WH.Radius.card, style: .continuous))
+        }
+    }
+
+    private func hrStatColumn(label: String, value: String, unit: String, color: Color) -> some View {
+        VStack(spacing: WH.Spacing.xs) {
+            Text(label)
+                .font(WH.Font.cardTitle)
+                .foregroundStyle(WH.Color.textSecondary)
+                .tracking(1.2)
+            Text(value)
+                .font(WH.Font.metricMedium())
+                .foregroundStyle(color)
+                .monospacedDigit()
+            Text(unit)
+                .font(WH.Font.caption)
+                .foregroundStyle(WH.Color.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var columnDivider: some View {
+        Rectangle()
+            .fill(WH.Color.separator)
+            .frame(width: 1)
+            .padding(.vertical, WH.Spacing.sm)
+    }
+
+    private func peakHRColor(_ bpm: Int) -> Color {
+        switch bpm {
+        case ..<100: return WH.Color.textPrimary
+        case 100..<140: return WH.Color.recoveryYellow
+        default: return WH.Color.recoveryRed
+        }
+    }
+
+    private func formatDataCoverage(_ minutes: Int) -> String {
+        guard minutes > 0 else { return "no data" }
+        if minutes >= 60 {
+            let h = minutes / 60
+            let m = minutes % 60
+            return m > 0 ? "\(h)h \(m)m data" : "\(h)h data"
+        }
+        return "\(minutes)m data"
     }
 
     // MARK: - Empty state
