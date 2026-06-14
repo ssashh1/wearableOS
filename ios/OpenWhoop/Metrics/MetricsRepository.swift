@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import WhoopStore
+import WhoopProtocol
 
 // MARK: - MetricsRepository
 //
@@ -19,6 +20,7 @@ import WhoopStore
 final class MetricsRepository: ObservableObject {
     @Published private(set) var today: DailyMetric?            // most-recent cached daily row
     @Published private(set) var lastNight: CachedSleepSession? // most-recent cached sleep session
+    @Published private(set) var localHRV: Double?              // locally-computed overnight RMSSD (ms)
     @Published private(set) var isRefreshing = false
     @Published private(set) var lastError: String?
     @Published private(set) var lastRefreshedAt: Date?
@@ -125,6 +127,20 @@ final class MetricsRepository: ObservableObject {
                                                     from: windowStart,
                                                     to: windowEnd,
                                                     limit: 50))?.last
+
+        // Compute local HRV from overnight R-R intervals (yesterday 8 PM → today 10 AM).
+        localHRV = await computeLocalHRV(store: store)
+    }
+
+    private func computeLocalHRV(store: WhoopStore) async -> Double? {
+        let cal = Calendar.current
+        let startOfToday = cal.startOfDay(for: Date())
+        let from = Int(startOfToday.addingTimeInterval(-4 * 3600).timeIntervalSince1970)
+        let to   = Int(startOfToday.addingTimeInterval(10 * 3600).timeIntervalSince1970)
+        let intervals = (try? await store.rrIntervals(
+            deviceId: deviceId, from: from, to: to, limit: 100_000
+        )) ?? []
+        return HRVCalculator.overnightRMSSD(from: intervals)
     }
 
     // MARK: - Refresh from server then reload

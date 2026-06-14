@@ -217,7 +217,7 @@ struct TodayView: View {
     }
 
     private var hrvCard: some View {
-        let hrv = metrics.today?.avgHrv ?? metrics.lastNight?.avgHrv
+        let hrv = metrics.localHRV ?? metrics.today?.avgHrv ?? metrics.lastNight?.avgHrv
         let value = hrv.map { String(format: "%.0f", $0) } ?? "—"
         let accent: Color = hrv != nil ? WH.Color.recoveryGreen : WH.Color.textSecondary
         return MetricCard(title: "HRV",

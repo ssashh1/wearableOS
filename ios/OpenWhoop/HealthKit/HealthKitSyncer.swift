@@ -13,8 +13,16 @@ final class HealthKitSyncer {
     private let whoopStore: WhoopStore
     private let deviceId: String
 
-    private static let hrWatermarkKey = "hk_hr_highwater"
+    private static let hrWatermarkKey  = "hk_hr_highwater"
+    private static let hrvDayWatermarkKey = "hk_hrv_day_watermark"
     private static let pageSize = 500
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = .current
+        return f
+    }()
 
     private static let writeTypes: Set<HKSampleType> = [
         HKQuantityType(.heartRate),
@@ -56,6 +64,7 @@ final class HealthKitSyncer {
     func sync() async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         await syncHeartRate()
+        await syncHRV()
     }
 
     private func syncHeartRate() async {
@@ -89,6 +98,40 @@ final class HealthKitSyncer {
             if samples.count < Self.pageSize { break }
             from = newWatermark
         }
+    }
+
+    // Writes one heartRateVariabilitySDNN sample per night (overnight RMSSD).
+    // Skips if we've already written a sample for today's overnight window.
+    private func syncHRV() async {
+        let todayStr = Self.dayFormatter.string(from: Date())
+        let lastSynced = UserDefaults.standard.string(forKey: Self.hrvDayWatermarkKey) ?? ""
+        guard lastSynced != todayStr else { return }
+
+        let cal = Calendar.current
+        let startOfToday = cal.startOfDay(for: Date())
+        let from = Int(startOfToday.addingTimeInterval(-4 * 3600).timeIntervalSince1970)  // yesterday 8 PM
+        let to   = Int(startOfToday.addingTimeInterval(10 * 3600).timeIntervalSince1970)  // today 10 AM
+
+        guard let intervals = try? await whoopStore.rrIntervals(
+            deviceId: deviceId, from: from, to: to, limit: 100_000
+        ) else { return }
+
+        guard let hrv = HRVCalculator.overnightRMSSD(from: intervals) else { return }
+
+        let sampleDate = HRVCalculator.overnightSampleDate(calendar: cal)
+        let quantity = HKQuantity(unit: HKUnit.secondUnit(with: .milli), doubleValue: hrv)
+        let sample = HKQuantitySample(
+            type: HKQuantityType(.heartRateVariabilitySDNN),
+            quantity: quantity,
+            start: sampleDate,
+            end: sampleDate,
+            device: Self.whoopDevice
+        )
+
+        do {
+            try await hkSave([sample])
+            UserDefaults.standard.set(todayStr, forKey: Self.hrvDayWatermarkKey)
+        } catch {}
     }
 
     // MARK: - Helpers
