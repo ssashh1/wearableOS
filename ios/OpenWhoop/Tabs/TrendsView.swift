@@ -57,10 +57,14 @@ struct TrendsView: View {
         }
         .preferredColorScheme(.dark)
         .task {
-            await metrics.refresh()
-            await reloadRows()
-            isLoading = false
-            await reloadHR()
+            // Refresh immediately, then every 60 s so live-persisted HR appears automatically.
+            while !Task.isCancelled {
+                await metrics.refresh()
+                await reloadRows()
+                if isLoading { isLoading = false }
+                await reloadHR()
+                try? await Task.sleep(for: .seconds(60))
+            }
         }
         .refreshable {
             await metrics.refresh()
@@ -162,9 +166,13 @@ struct TrendsView: View {
 
                 rangePicker
 
-                if rows.isEmpty && metrics.localStrainHistory.isEmpty {
+                // Always show the HR chart — it reads from local SQLite and populates as soon
+                // as the WHOOP streams realtime data (no server required).
+                hrCard
+
+                if rows.isEmpty && metrics.localStrainHistory.isEmpty && hrPoints.isEmpty {
                     emptyState
-                } else {
+                } else if !rows.isEmpty || !metrics.localStrainHistory.isEmpty {
                     chartsStack
                 }
 
@@ -215,9 +223,6 @@ struct TrendsView: View {
 
             // Local strain chart — shown when no server data but local HR exists
             localStrainCard
-
-            // Raw HR card — stream-backed, independent of the daily range picker
-            hrCard
         }
     }
 
@@ -409,7 +414,7 @@ struct TrendsView: View {
                 Text("No daily history yet")
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundStyle(WH.Color.textPrimary)
-                Text("Daily recovery, strain, and sleep trends require a server. Your raw heart rate history is shown in the chart above as it's collected locally.")
+                Text("Daily recovery, strain, and sleep trends require a server. Heart rate data populates in the chart above as your WHOOP streams — keep the Device tab connected.")
                     .font(WH.Font.caption)
                     .foregroundStyle(WH.Color.textSecondary)
                     .multilineTextAlignment(.center)

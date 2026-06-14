@@ -1,5 +1,6 @@
 import Foundation
 import WhoopProtocol
+import WhoopStore
 
 /// Pure decode→state router. Takes a COMPLETE (already reassembled) frame, decodes it with
 /// WhoopProtocol.parseFrame, and updates LiveState. No CoreBluetooth — fully unit-testable.
@@ -10,8 +11,28 @@ public final class FrameRouter {
     /// BLEManager wires this to a rate-limited requestSync(.strap). nil in pure/unit contexts.
     var onSyncTrigger: (() -> Void)?
 
+    // Realtime persistence — wired by BLEManager after bootstrapStore() completes.
+    // HR/RR samples are batched and flushed to SQLite every ~5 seconds so MetricsRepository
+    // can compute local metrics (todayStats, localStrain, etc.) without a full historical sync.
+    var persistStore: WhoopStore?
+    var persistDeviceId: String = ""
+    private var pendingHR: [HRSample] = []
+    private var pendingRR: [RRInterval] = []
+    private var lastPersistFlush: Date = .distantPast
+
     public init(state: LiveState) {
         self.state = state
+    }
+
+    /// Flush any pending HR/RR samples to SQLite. Called on disconnect to avoid data loss.
+    func flushPendingPersist() {
+        guard let store = persistStore, !persistDeviceId.isEmpty,
+              !pendingHR.isEmpty || !pendingRR.isEmpty else { return }
+        let hr = pendingHR; let rr = pendingRR
+        pendingHR = []; pendingRR = []
+        lastPersistFlush = Date()
+        let deviceId = persistDeviceId
+        Task { try? await store.insert(Streams(hr: hr, rr: rr), deviceId: deviceId) }
     }
 
     /// Handle one complete frame (bytes including 0xAA SOF and the crc32 trailer).
@@ -25,11 +46,14 @@ public final class FrameRouter {
 
         switch parsed.typeName {
         case "REALTIME_DATA":
+            let nowTs = Int(Date().timeIntervalSince1970)
             if let hr = parsed.parsed["heart_rate"]?.intValue {
                 state.heartRate = hr
                 if state.sessionStartedAt == nil { state.sessionStartedAt = Date() }
                 state.hrHistory.append(LiveHRPoint(bpm: hr))
                 if state.hrHistory.count > 300 { state.hrHistory.removeFirst() }
+                // Accumulate for SQLite batch-write
+                pendingHR.append(HRSample(ts: nowTs, bpm: hr))
             }
             // The realtime stream usually reports rr_count=0; only update R-R when this frame
             // actually carries intervals, so we don't wipe R-R sourced from the 0x2A37 profile.
@@ -37,6 +61,18 @@ public final class FrameRouter {
                 state.rr = rr
                 state.rrHistory.append(contentsOf: rr)
                 if state.rrHistory.count > 500 { state.rrHistory.removeFirst(state.rrHistory.count - 500) }
+                pendingRR.append(contentsOf: rr.map { RRInterval(ts: nowTs, rrMs: $0) })
+            }
+            // Flush accumulated HR/RR to SQLite every 5 seconds (fire-and-forget Task).
+            // The ON CONFLICT DO NOTHING upsert in WhoopStore makes this safe to call repeatedly.
+            if let store = persistStore, !persistDeviceId.isEmpty,
+               Date().timeIntervalSince(lastPersistFlush) >= 5,
+               !pendingHR.isEmpty {
+                let hr = pendingHR; let rr = pendingRR
+                pendingHR = []; pendingRR = []
+                lastPersistFlush = Date()
+                let deviceId = persistDeviceId
+                Task { try? await store.insert(Streams(hr: hr, rr: rr), deviceId: deviceId) }
             }
 
         case "COMMAND_RESPONSE":

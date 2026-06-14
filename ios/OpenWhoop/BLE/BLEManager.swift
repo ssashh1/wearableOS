@@ -147,6 +147,11 @@ public final class BLEManager: NSObject, ObservableObject {
             serverSync = ServerSync(config: cfg, store: store, deviceId: deviceId)
         }
         healthKitSyncer = HealthKitSyncer(whoopStore: store, deviceId: deviceId)
+        // Wire realtime persistence: FrameRouter will flush HR/RR batches to SQLite every ~5 s
+        // so MetricsRepository can compute local metrics (todayStats, localStrain, etc.) even
+        // without a historical offload.
+        router.persistStore = store
+        router.persistDeviceId = deviceId
     }
 
     /// Designated initializer for testing and preview use: accepts a pre-built Collector.
@@ -549,11 +554,20 @@ public final class BLEManager: NSObject, ObservableObject {
     /// Parse a standard BLE Heart Rate Measurement (0x2A37) via the pure StandardHeartRate parser.
     private func parseStandardHR(_ data: [UInt8]) {
         guard let m = StandardHeartRate.parse(data) else { return }
-        // R-R: the standard profile is the RELIABLE source (the custom REALTIME_DATA stream
-        // usually reports rr_count=0), so always surface intervals when present.
-        if !m.rr.isEmpty { state.rr = m.rr }
-        // HR: prefer the custom stream once bonded; use 0x2A37 HR as a pre-bond fallback.
-        if state.heartRate == nil || !state.bonded { state.heartRate = m.hr }
+        // R-R: 0x2A37 is the RELIABLE RR source (REALTIME_DATA usually has rr_count=0).
+        // Always accumulate into the rolling buffer so NowView HRV/Stress can compute.
+        if !m.rr.isEmpty {
+            state.rr = m.rr
+            state.rrHistory.append(contentsOf: m.rr)
+            if state.rrHistory.count > 500 { state.rrHistory.removeFirst(state.rrHistory.count - 500) }
+        }
+        // HR: prefer the custom REALTIME_DATA stream once bonded; use 0x2A37 as pre-bond fallback.
+        if state.heartRate == nil || !state.bonded {
+            state.heartRate = m.hr
+            if state.sessionStartedAt == nil { state.sessionStartedAt = Date() }
+            state.hrHistory.append(LiveHRPoint(bpm: m.hr))
+            if state.hrHistory.count > 300 { state.hrHistory.removeFirst() }
+        }
     }
 }
 
@@ -603,6 +617,7 @@ extension BLEManager: @preconcurrency CBCentralManagerDelegate {
                                didDisconnectPeripheral peripheral: CBPeripheral,
                                error: Error?) {
         Task { @MainActor in await collector?.flush() }
+        router.flushPendingPersist()
         state.connected = false
         didBond = false
         clockRequested = false

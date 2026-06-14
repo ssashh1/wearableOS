@@ -27,7 +27,14 @@ struct TodayView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .preferredColorScheme(.dark)
-        .task { await metrics.refresh() }
+        .task {
+            // First load immediately, then refresh every 60 s while visible so live-persisted
+            // HR data (from the realtime BLE stream) appears without a manual pull-to-refresh.
+            while !Task.isCancelled {
+                await metrics.refresh()
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
         .refreshable { await metrics.refresh() }
     }
 
@@ -55,6 +62,9 @@ struct TodayView: View {
                 // Hero recovery ring — server-only; shows pending ring when unconfigured
                 heroSection
 
+                // Live biometrics — shows immediately when WHOOP is connected
+                liveNowSection
+
                 // HRV + RHR: locally computed, 7-day sparklines
                 hrvAndRhrRow
 
@@ -81,11 +91,11 @@ struct TodayView: View {
                 }
 
                 if metrics.today == nil && metrics.lastNight == nil
-                    && metrics.todayStats == nil && !metrics.isRefreshing {
+                    && metrics.todayStats == nil && !metrics.isRefreshing
+                    && !live.state.connected {
                     emptyState
                 }
 
-                strapNote
                 syncFooter
 
                 Spacer(minLength: WH.Spacing.xl)
@@ -93,6 +103,126 @@ struct TodayView: View {
             .padding(WH.Spacing.md)
         }
         .background(WH.Color.background)
+    }
+
+    // MARK: - Live now section (shows immediately when WHOOP is connected, no SQLite needed)
+
+    @ViewBuilder
+    private var liveNowSection: some View {
+        if live.state.connected {
+            let liveHRV    = HRVCalculator.rmssd(live.state.rrHistory)
+            let liveStress = StressCalculator.stress(from: live.state.rrHistory)
+
+            VStack(alignment: .leading, spacing: WH.Spacing.sm) {
+                HStack {
+                    Text("LIVE NOW")
+                        .font(WH.Font.cardTitle)
+                        .foregroundStyle(WH.Color.textSecondary)
+                        .tracking(1.2)
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(WH.Color.recoveryRed)
+                            .frame(width: 6, height: 6)
+                        Text("LIVE")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(WH.Color.recoveryRed)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(WH.Color.recoveryRed.opacity(0.12)))
+                }
+
+                HStack(spacing: 0) {
+                    // Heart rate
+                    if let hr = live.state.heartRate {
+                        let zoneColor = hrZoneColor(bpm: hr)
+                        liveStatColumn(label: "HEART RATE",
+                                       value: "\(hr)",
+                                       unit: "bpm",
+                                       color: zoneColor)
+                    } else {
+                        liveStatColumn(label: "HEART RATE",
+                                       value: "—", unit: "", color: WH.Color.textSecondary)
+                    }
+
+                    columnDivider
+
+                    // HRV — needs >60 clean RR pairs (~1 min of 0x2A37 data)
+                    liveStatColumn(label: "HRV",
+                                   value: liveHRV.map { String(format: "%.0f", $0) } ?? "—",
+                                   unit: liveHRV != nil ? "ms" : "",
+                                   color: liveHRV != nil ? WH.Color.teal : WH.Color.textSecondary)
+
+                    columnDivider
+
+                    // Stress — needs ≥120 RR intervals (~2 min)
+                    liveStatColumn(label: "STRESS",
+                                   value: liveStress.map { String(format: "%.1f", $0) } ?? "—",
+                                   unit: liveStress != nil ? "/ 10" : "",
+                                   color: liveStress.map(stressColor) ?? WH.Color.textSecondary)
+
+                    // Battery (only when known)
+                    if let bat = live.state.batteryPct {
+                        columnDivider
+                        let batColor: Color = bat > 30 ? WH.Color.recoveryGreen
+                                                       : bat > 15 ? WH.Color.recoveryYellow
+                                                       : WH.Color.recoveryRed
+                        liveStatColumn(label: "BATTERY",
+                                       value: "\(Int(bat.rounded()))",
+                                       unit: "%",
+                                       color: batColor)
+                    }
+                }
+
+                // Subtle note about HRV/stress data window
+                if live.state.rrHistory.count < 60 {
+                    Text("HRV and stress appear after ~1 min of R-R data collects")
+                        .font(WH.Font.caption)
+                        .foregroundStyle(WH.Color.textSecondary.opacity(0.6))
+                }
+            }
+            .padding(WH.Spacing.md)
+            .background(WH.Color.surface,
+                        in: RoundedRectangle(cornerRadius: WH.Radius.card, style: .continuous))
+        }
+    }
+
+    private func liveStatColumn(label: String, value: String, unit: String, color: Color) -> some View {
+        VStack(spacing: WH.Spacing.xs) {
+            Text(label)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(WH.Color.textSecondary)
+                .tracking(1.0)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(WH.Font.metricMedium(size: 22))
+                    .foregroundStyle(color)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.2), value: value)
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(WH.Font.caption)
+                        .foregroundStyle(WH.Color.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func hrZoneColor(bpm: Int) -> Color {
+        switch bpm {
+        case ..<60:  return WH.Color.textSecondary
+        case ..<100: return WH.Color.recoveryGreen
+        case ..<130: return WH.Color.recoveryYellow
+        case ..<160: return .orange
+        default:     return WH.Color.recoveryRed
+        }
     }
 
     // MARK: - Hero section (recovery ring → recovery history)
@@ -418,59 +548,6 @@ struct TodayView: View {
             }
             .padding(.vertical, WH.Spacing.xxl)
             Spacer()
-        }
-    }
-
-    // MARK: - Live strap status row (HR + battery when connected; caption when not)
-
-    /// Compact pill showing a single live reading (HR or battery).
-    private func liveChip(icon: String, label: String, color: Color) -> some View {
-        HStack(spacing: WH.Spacing.xs) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(color)
-            Text(label)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(WH.Color.textPrimary)
-                .monospacedDigit()
-        }
-        .padding(.horizontal, WH.Spacing.sm)
-        .padding(.vertical, WH.Spacing.xs)
-        .background(WH.Color.surface2,
-                    in: Capsule())
-    }
-
-    /// Shows live HR + battery pills when connected; otherwise shows the connect caption.
-    private var strapNote: some View {
-        Group {
-            if live.state.connected, let hr = live.state.heartRate {
-                HStack(spacing: WH.Spacing.sm) {
-                    liveChip(icon: "heart.fill",
-                             label: "\(hr) BPM LIVE",
-                             color: WH.Color.recoveryRed)
-                    if let bat = live.state.batteryPct {
-                        let pct = Int(bat.rounded())
-                        let batColor: Color = pct > 30 ? WH.Color.recoveryGreen
-                                                       : WH.Color.recoveryYellow
-                        let batIcon = pct > 70 ? "battery.100" :
-                                      pct > 30 ? "battery.50"  : "battery.25"
-                        liveChip(icon: batIcon,
-                                 label: "\(pct)%",
-                                 color: batColor)
-                    }
-                    Spacer()
-                }
-            } else {
-                HStack(spacing: WH.Spacing.xs) {
-                    Image(systemName: "wave.3.right")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(WH.Color.textSecondary.opacity(0.5))
-                    Text("Live HR & battery appear when your strap is connected (Device tab)")
-                        .font(WH.Font.caption)
-                        .foregroundStyle(WH.Color.textSecondary.opacity(0.5))
-                        .lineLimit(2)
-                }
-            }
         }
     }
 

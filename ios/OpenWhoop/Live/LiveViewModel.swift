@@ -29,6 +29,12 @@ public final class LiveViewModel: ObservableObject {
             .compactMap { $0 }
             .sink { _ in SyncNudge.reschedule() }
             .store(in: &cancellables)
+        // Forward LiveState.objectWillChange so any view observing this LiveViewModel
+        // re-renders whenever any LiveState property (heartRate, hrHistory, rrHistory…) changes.
+        // Without this, only views that directly @ObservedObject the state get live updates.
+        s.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     public func connect()  { ble.connect() }
