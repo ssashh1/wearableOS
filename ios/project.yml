@@ -1,0 +1,54 @@
+name: OpenWhoop
+options:
+  bundleIdPrefix: com.openwhoop
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+packages:
+  WhoopProtocol:
+    path: ../Packages/WhoopProtocol
+  WhoopStore:
+    path: ../Packages/WhoopStore
+targets:
+  OpenWhoop:
+    type: application
+    platform: iOS
+    sources: [OpenWhoop]
+    configFiles:
+      Debug: OpenWhoop/Config/Secrets.xcconfig
+      Release: OpenWhoop/Config/Secrets.xcconfig
+    info:
+      path: OpenWhoop/Info.plist
+      properties:
+        CFBundleDisplayName: OpenWhoop
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        NSBluetoothAlwaysUsageDescription: >-
+          OpenWhoop connects to your WHOOP 4.0 over Bluetooth to read heart rate,
+          R-R intervals, battery, and sensor data locally on your device.
+        UIBackgroundModes:
+          - bluetooth-central
+        WHOOP_BASE_URL: $(WHOOP_BASE_URL)
+        WHOOP_API_KEY: $(WHOOP_API_KEY)
+        WHOOP_DEVICE_ID: $(WHOOP_DEVICE_ID)
+    dependencies:
+      - package: WhoopProtocol
+      - package: WhoopStore
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: 1
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  OpenWhoopTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [OpenWhoopTests]
+    dependencies:
+      - target: OpenWhoop
+      - package: WhoopProtocol
+      - package: WhoopStore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES

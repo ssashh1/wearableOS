@@ -1,0 +1,40 @@
+appId: com.openwhoop.OpenWhoop
+---
+# Flow 6: Device tab → Body Profile & Settings sheet → verify Unit System
+# Verifies: Device tab renders, settings card is tappable, SettingsView opens with Unit System
+
+- launchApp
+- runFlow: utils/allow_notifications.yaml
+
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# Navigate to Device tab
+- tapOn:
+    text: "Device"
+
+- waitForAnimationToEnd:
+    timeout: 4000
+
+- takeScreenshot: /tmp/maestro_06a_device.png
+
+# Tap "Body Profile & Settings" card
+- tapOn:
+    text: "Body Profile & Settings"
+
+- waitForAnimationToEnd:
+    timeout: 4000
+
+# Assert SettingsView opened — should show "Unit System" section header
+- assertVisible:
+    text: "Unit System"
+
+- takeScreenshot: /tmp/maestro_06b_settings.png
+
+# Dismiss the settings sheet by swiping down (SettingsView is a sheet with no explicit Done button)
+- swipe:
+    direction: DOWN
+    startX: 200
+    startY: 200
+    endX: 200
+    endY: 700

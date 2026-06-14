@@ -1,0 +1,40 @@
+appId: com.openwhoop.OpenWhoop
+---
+# Flow 1: Today tab → HRV metric detail → range change → back
+# Verifies: Today loads, HRV card is tappable, MetricDetailView renders with range picker & stats
+
+- launchApp
+- runFlow: utils/allow_notifications.yaml
+
+# Wait for data to load (network fetch)
+- waitForAnimationToEnd:
+    timeout: 8000
+
+- takeScreenshot: /tmp/maestro_01a_today.png
+
+# Tap the HRV card (text "HRV" appears as the card title)
+- tapOn:
+    text: "HRV"
+    index: 0
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Assert we are in MetricDetailView — range picker labels should be visible
+- assertVisible:
+    text: "1M"
+
+- takeScreenshot: /tmp/maestro_01b_hrv_detail.png
+
+# Tap "3M" segment to change the range
+- tapOn:
+    text: "3M"
+
+- waitForAnimationToEnd:
+    timeout: 4000
+
+- takeScreenshot: /tmp/maestro_01c_hrv_3m.png
+
+# Go back to Today
+- tapOn:
+    text: "Today"

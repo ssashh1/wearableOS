@@ -1,0 +1,26 @@
+appId: com.openwhoop.OpenWhoop
+---
+# Flow 2: Today tab → Day Strain metric detail → back
+# Verifies: Strain card tappable, MetricDetailView for strain renders
+
+- launchApp
+- runFlow: utils/allow_notifications.yaml
+
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# Tap "DAY STRAIN" card (title text in the card — all-caps in UI)
+- tapOn:
+    text: "DAY STRAIN"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Assert MetricDetailView for Strain — range picker should show 1W/1M/3M/6M
+- assertVisible:
+    text: "1W"
+
+- takeScreenshot: /tmp/maestro_02_strain_detail.png
+
+# Tap back (navigate back to Today)
+- pressKey: Back

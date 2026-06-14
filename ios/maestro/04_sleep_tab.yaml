@@ -1,0 +1,71 @@
+appId: com.openwhoop.OpenWhoop
+---
+# Flow 4: Sleep tab — hypnogram, 7-night chart, Smart Alarm card
+# Verifies: Sleep tab renders correctly with stage data, 7-night chart, alarm entry point
+
+- launchApp
+- runFlow: utils/allow_notifications.yaml
+
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# Navigate to Sleep tab
+- tapOn:
+    text: "Sleep"
+
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# Assert Sleep Efficiency section heading visible
+- assertVisible:
+    text: "SLEEP EFFICIENCY"
+
+- takeScreenshot: /tmp/maestro_04a_sleep_top.png
+
+# Scroll down to see SLEEP STAGES (hypnogram section header)
+- scrollUntilVisible:
+    element:
+      text: "SLEEP STAGES"
+    direction: down
+    timeout: 10000
+
+- takeScreenshot: /tmp/maestro_04b_sleep_stages.png
+
+# Scroll to the 7-Night chart
+- scrollUntilVisible:
+    element:
+      text: "7-NIGHT SLEEP / WAKE"
+    direction: down
+    timeout: 10000
+
+- takeScreenshot: /tmp/maestro_04c_seven_night.png
+
+# Scroll to Smart Alarm card
+- scrollUntilVisible:
+    element:
+      text: "SMART ALARM"
+    direction: down
+    timeout: 10000
+
+- takeScreenshot: /tmp/maestro_04d_alarm_card.png
+
+# Tap the Smart Alarm card to open AlarmView sheet
+- tapOn:
+    text: "SMART ALARM"
+
+- waitForAnimationToEnd:
+    timeout: 4000
+
+# Assert AlarmView opened — should have "Wake-by Time" or "Set alarm" text
+- assertVisible:
+    text: "Wake-by Time"
+
+- takeScreenshot: /tmp/maestro_04e_alarm_view.png
+
+# Dismiss the sheet (swipe down)
+- swipe:
+    direction: DOWN
+    startX: 200
+    startY: 300
+    endX: 200
+    endY: 700

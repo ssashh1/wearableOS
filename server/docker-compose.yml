@@ -1,0 +1,43 @@
+# Whoop stack: TimescaleDB datastore + FastAPI ingest service.
+# Raw frames archived under ${DATA_ROOT}/whoop/raw; DB data under ${DATA_ROOT}/whoop/db.
+# Set DATA_ROOT in your environment (or .env) before `docker compose up`.
+services:
+  whoop-db:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: whoop-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${WHOOP_DB_NAME:-whoop}
+      - POSTGRES_USER=${WHOOP_DB_USER:-whoop}
+      - POSTGRES_PASSWORD=${WHOOP_DB_PASSWORD}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - ${DATA_ROOT}/whoop/db:/var/lib/postgresql/data
+      # init.sql runs ONLY on first init (empty data dir). The ingest service also
+      # bootstraps the schema idempotently on startup, so re-runs are safe.
+      - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${WHOOP_DB_USER:-whoop} -d ${WHOOP_DB_NAME:-whoop}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  whoop-ingest:
+    build:
+      # server/ dir, so the image can COPY packages/whoop-protocol
+      context: .
+      dockerfile: ingest/Dockerfile
+    container_name: whoop-ingest
+    restart: unless-stopped
+    depends_on:
+      whoop-db:
+        condition: service_healthy
+    environment:
+      - WHOOP_API_KEY=${WHOOP_API_KEY}
+      - WHOOP_DB_DSN=postgresql://${WHOOP_DB_USER:-whoop}:${WHOOP_DB_PASSWORD}@whoop-db:5432/${WHOOP_DB_NAME:-whoop}
+      - WHOOP_RAW_ROOT=/data/raw
+      - TZ=${TZ:-UTC}
+    volumes:
+      - ${DATA_ROOT}/whoop/raw:/data/raw
+    ports:
+      - "${WHOOP_INGEST_PORT:-8770}:8000"

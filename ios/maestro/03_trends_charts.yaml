@@ -1,0 +1,65 @@
+appId: com.openwhoop.OpenWhoop
+---
+# Flow 3: Trends tab — range change, Heart Rate card, HeartRateDetailView with range change
+# Verifies: Trends loads with chart cards, range picker works, HR card pushes detail view
+
+- launchApp
+- runFlow: utils/allow_notifications.yaml
+
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# Navigate to Trends tab
+- tapOn:
+    text: "Trends"
+
+- waitForAnimationToEnd:
+    timeout: 8000
+
+- takeScreenshot: /tmp/maestro_03a_trends.png
+
+# Tap "7D" range in the segmented control
+- tapOn:
+    text: "7D"
+
+- waitForAnimationToEnd:
+    timeout: 4000
+
+- takeScreenshot: /tmp/maestro_03b_trends_7d.png
+
+# Scroll down to find the HEART RATE card at the bottom of the charts stack
+- scrollUntilVisible:
+    element:
+      text: "HEART RATE"
+    direction: down
+    timeout: 10000
+
+- takeScreenshot: /tmp/maestro_03c_trends_hr_card.png
+
+# Tap the HEART RATE card to push HeartRateDetailView
+- tapOn:
+    text: "HEART RATE"
+
+- waitForAnimationToEnd:
+    timeout: 6000
+
+# Assert HeartRateDetailView loaded — should show range picker with 24H selected
+- assertVisible:
+    text: "24H"
+
+- assertVisible:
+    text: "AVG"
+
+- takeScreenshot: /tmp/maestro_03d_hr_detail_24h.png
+
+# Tap "3D" range
+- tapOn:
+    text: "3D"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: /tmp/maestro_03e_hr_detail_3d.png
+
+# Go back to Trends
+- pressKey: Back

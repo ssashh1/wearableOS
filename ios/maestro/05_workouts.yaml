@@ -1,0 +1,43 @@
+appId: com.openwhoop.OpenWhoop
+---
+# Flow 5: Workouts tab — list, tap first row, WorkoutDetailView
+# Verifies: Workout list renders, detail view shows HR Zones + PEAK HR
+
+- launchApp
+- runFlow: utils/allow_notifications.yaml
+
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# Navigate to Workouts tab
+- tapOn:
+    text: "Workouts"
+
+- waitForAnimationToEnd:
+    timeout: 8000
+
+- takeScreenshot: /tmp/maestro_05a_workouts_list.png
+
+# Tap first visible workout row by index (rows contain "bpm" text; pick index 0)
+# The row itself is a NavigationLink wrapping a HStack; tap at the top of the list area
+- tapOn:
+    text: "bpm"
+    index: 0
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Assert WorkoutDetailView — should show PEAK HR and HR Zones section header
+- assertVisible:
+    text: "PEAK HR"
+
+- takeScreenshot: /tmp/maestro_05b_workout_detail.png
+
+# Also assert HR Zones section header is present
+- assertVisible:
+    text: "HR ZONES"
+
+- takeScreenshot: /tmp/maestro_05c_workout_zones.png
+
+# Go back
+- pressKey: Back

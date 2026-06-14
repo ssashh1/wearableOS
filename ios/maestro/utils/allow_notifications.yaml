@@ -1,0 +1,9 @@
+appId: com.openwhoop.OpenWhoop
+---
+# Utility sub-flow: dismiss iOS notification permission alert if present
+- runFlow:
+    when:
+      visible: "Allow"
+    commands:
+      - tapOn:
+          text: "Allow"
