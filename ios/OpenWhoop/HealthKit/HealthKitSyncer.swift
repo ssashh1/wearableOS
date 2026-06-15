@@ -102,13 +102,22 @@ final class HealthKitSyncer {
 
     // Writes one heartRateVariabilitySDNN sample per night (overnight RMSSD).
     // Skips if we've already written a sample for today's overnight window.
+    //
+    // IMPORTANT: only fires after 6 AM local time. The backfill timer runs every 15 min while
+    // connected — without this guard a mid-night backfill (e.g. when the phone stays connected
+    // overnight for the alarm) would write partial overnight HRV (only 8 PM–midnight = 4 h),
+    // then the per-day watermark would block the correct full-window write at wake-up time.
+    // Waiting until 6 AM ensures ≥ 10 h of overnight data and guarantees overnightSampleDate()
+    // returns 2 AM (not a pre-midnight timestamp).
     private func syncHRV() async {
+        let cal = Calendar.current
+        let startOfToday = cal.startOfDay(for: Date())
+        guard Date() >= startOfToday.addingTimeInterval(6 * 3600) else { return }  // before 6 AM → skip
+
         let todayStr = Self.dayFormatter.string(from: Date())
         let lastSynced = UserDefaults.standard.string(forKey: Self.hrvDayWatermarkKey) ?? ""
         guard lastSynced != todayStr else { return }
 
-        let cal = Calendar.current
-        let startOfToday = cal.startOfDay(for: Date())
         let from = Int(startOfToday.addingTimeInterval(-4 * 3600).timeIntervalSince1970)  // yesterday 8 PM
         let to   = Int(startOfToday.addingTimeInterval(10 * 3600).timeIntervalSince1970)  // today 10 AM
 
