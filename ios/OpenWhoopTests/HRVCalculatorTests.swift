@@ -103,6 +103,23 @@ final class HRVCalculatorTests: XCTestCase {
         XCTAssertNil(HRVCalculator.rmssd(s, minPairs: 15))
     }
 
+    func testRMSSD_samples_highMalikRate_notContamination() {
+        // Simulates WHOOP 4.0 PPG behavior: occasional doubled intervals (missed optical beats)
+        // interleaved with normal ~600ms beats. Pattern [600, 602, 1200] × 30 → 89 pairs,
+        // 30 valid (diff=2ms), 59 Malik-skipped (598–600ms jumps). Malik rate ≈ 66%.
+        //
+        // OLD behavior: bad-ratio = 66% > 40% → nil (blocks a valid reading).
+        // NEW behavior: artifact ratio (range+gap only) = 0% → 30 valid pairs → RMSSD shown.
+        var values = [Int]()
+        for _ in 0..<30 { values += [600, 602, 1200] }
+        let s = samples(values)
+        let result = HRVCalculator.rmssd(s, minPairs: 15)
+        XCTAssertNotNil(result, "Malik skips (PPG doubled intervals) must not trigger the bad-ratio guard")
+        if let r = result {
+            XCTAssertEqual(r, 2.0, accuracy: 0.5, "RMSSD from 30 valid pairs with diff=2ms should be ~2ms")
+        }
+    }
+
     // MARK: - SDNN
 
     func testSDNN_allEqual_zero() {

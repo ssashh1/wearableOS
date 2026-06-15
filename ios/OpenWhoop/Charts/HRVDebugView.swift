@@ -89,21 +89,22 @@ struct HRVDebugView: View {
 
     private var rejectionCard: some View {
         let dbg = HRVCalculator.rmssdDebug(state.rrHistory, minPairs: 15)
+        let artifactPairs = dbg.rejectedByRange + dbg.rejectedByGap
+        let artifactPct = dbg.totalPairs > 0
+            ? Int((Double(artifactPairs) / Double(dbg.totalPairs) * 100).rounded())
+            : 0
         return debugCard("ARTIFACT REJECTION (minPairs=15)") {
             VStack(alignment: .leading, spacing: WH.Spacing.xs) {
                 statRow("Total pairs evaluated", "\(dbg.totalPairs)")
-                statRow("Valid pairs", "\(dbg.validPairs)", accent: WH.Color.recoveryGreen)
+                statRow("Valid pairs (in RMSSD)", "\(dbg.validPairs)", accent: WH.Color.recoveryGreen)
                 statRow("Rejected — out of range", "\(dbg.rejectedByRange)",
                         accent: dbg.rejectedByRange > 0 ? WH.Color.recoveryRed : WH.Color.textSecondary)
                 statRow("Rejected — session gap (>30s)", "\(dbg.rejectedByGap)",
                         accent: dbg.rejectedByGap > 0 ? WH.Color.recoveryYellow : WH.Color.textSecondary)
-                statRow("Rejected — Malik (|diff|>200ms)", "\(dbg.rejectedByMalik)",
+                statRow("Skipped — Malik (|diff|>200ms)", "\(dbg.rejectedByMalik)",
                         accent: dbg.rejectedByMalik > 0 ? WH.Color.recoveryYellow : WH.Color.textSecondary)
-                let pct = dbg.totalPairs > 0
-                    ? Int((Double(dbg.totalPairs - dbg.validPairs) / Double(dbg.totalPairs) * 100).rounded())
-                    : 0
-                statRow("Bad-pair ratio", "\(pct)%  (nil if >40%)",
-                        accent: pct > 40 ? WH.Color.recoveryRed : WH.Color.recoveryGreen)
+                statRow("Artifact ratio (range+gap only)", "\(artifactPct)%  (nil if >40%)",
+                        accent: artifactPct > 40 ? WH.Color.recoveryRed : WH.Color.recoveryGreen)
             }
         }
     }

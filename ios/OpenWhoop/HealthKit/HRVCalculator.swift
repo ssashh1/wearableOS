@@ -29,25 +29,30 @@ enum HRVCalculator {
     // Primary overload for live data. Applies four levels of artifact rejection:
     //   1. Range filter (minRR–maxRR)
     //   2. Time-gap filter: >30s between BLE notifications = session boundary, not consecutive beats
-    //   3. Malik criterion: |diff| > 200ms = ectopic/artifact pair
-    //   4. Bad-ratio guard: >40% of pairs rejected → window is contaminated, return nil
+    //   3. Malik criterion: |diff| > 200ms = ectopic/missed-beat; pair is SKIPPED, not contamination
+    //   4. Bad-ratio guard: >40% of ARTIFACT pairs (range+gap only) → hardware dropout, return nil
+    //
+    // Malik skips are excluded from the bad-ratio because PPG wristbands frequently produce
+    // doubled intervals (missed optical beats) that Malik correctly skips; those skips do not
+    // contaminate the valid pairs that remain.
     static func rmssd(_ samples: [RRSample], minPairs: Int = minPairs) -> Double? {
         var sumSqDiff = 0.0
         var validPairs = 0
         var totalPairs = 0
+        var artifactPairs = 0  // range + gap only; Malik skips excluded from contamination count
         guard samples.count >= 2 else { return nil }
         for i in 1..<samples.count {
             let prev = samples[i - 1], curr = samples[i]
             totalPairs += 1
             guard prev.rrMs >= minRR && prev.rrMs <= maxRR,
-                  curr.rrMs >= minRR && curr.rrMs <= maxRR else { continue }
-            guard curr.ts.timeIntervalSince(prev.ts) <= 30.0 else { continue }
+                  curr.rrMs >= minRR && curr.rrMs <= maxRR else { artifactPairs += 1; continue }
+            guard curr.ts.timeIntervalSince(prev.ts) <= 30.0 else { artifactPairs += 1; continue }
             guard abs(curr.rrMs - prev.rrMs) <= malikThresholdMs else { continue }
             let diff = Double(curr.rrMs - prev.rrMs)
             sumSqDiff += diff * diff
             validPairs += 1
         }
-        guard totalPairs == 0 || Double(totalPairs - validPairs) / Double(totalPairs) <= maxBadRatio else { return nil }
+        guard totalPairs == 0 || Double(artifactPairs) / Double(totalPairs) <= maxBadRatio else { return nil }
         guard validPairs >= minPairs else { return nil }
         return sqrt(sumSqDiff / Double(validPairs))
     }
@@ -76,11 +81,18 @@ enum HRVCalculator {
 
     // Standard deviation of NN intervals. Apple's heartRateVariabilitySDNN type expects this
     // algorithm specifically — do NOT use RMSSD values here.
+    // Applies the same Malik filter as RMSSD to remove ectopic/missed beats before computing
+    // SDNN; without this, doubled PPG intervals (2× normal RR) massively inflate the variance.
     static func sdnn(_ intervals: [Int], minIntervals: Int = minPairs) -> Double? {
         let clean = intervals.filter { $0 >= minRR && $0 <= maxRR }
-        guard clean.count >= minIntervals else { return nil }
-        let mean = Double(clean.reduce(0, +)) / Double(clean.count)
-        let variance = clean.reduce(0.0) { $0 + pow(Double($1) - mean, 2) } / Double(clean.count - 1)
+        var nn = [Int]()
+        if let first = clean.first { nn.append(first) }
+        for i in 1..<clean.count {
+            if abs(clean[i] - nn.last!) <= malikThresholdMs { nn.append(clean[i]) }
+        }
+        guard nn.count >= minIntervals else { return nil }
+        let mean = Double(nn.reduce(0, +)) / Double(nn.count)
+        let variance = nn.reduce(0.0) { $0 + pow(Double($1) - mean, 2) } / Double(nn.count - 1)
         return sqrt(variance)
     }
 
@@ -145,8 +157,9 @@ enum HRVCalculator {
             sumSqDiff += diff * diff
             validPairs += 1
         }
-        let badRatio = totalPairs > 0 ? Double(totalPairs - validPairs) / Double(totalPairs) : 0.0
-        let value: Double? = (badRatio <= maxBadRatio && validPairs >= minPairs)
+        let artifactPairs = byRange + byGap
+        let artifactRatio = totalPairs > 0 ? Double(artifactPairs) / Double(totalPairs) : 0.0
+        let value: Double? = (artifactRatio <= maxBadRatio && validPairs >= minPairs)
             ? sqrt(sumSqDiff / Double(validPairs)) : nil
         return RMSSDDebug(totalPairs: totalPairs, validPairs: validPairs, rejectedByRange: byRange,
                           rejectedByGap: byGap, rejectedByMalik: byMalik, value: value)
