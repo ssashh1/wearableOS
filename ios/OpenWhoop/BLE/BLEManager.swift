@@ -517,7 +517,7 @@ public final class BLEManager: NSObject, ObservableObject {
     func armStrapAlarm(at date: Date) {
         let epochSec = UInt32(date.timeIntervalSince1970)
         send(.setClock, payload: BLEManager.setClockPayload())
-        send(.setAlarmTime, payload: WhoopCommand.setAlarmPayload(epochSec: epochSec))
+        send(.setAlarmTime, payload: WhoopCommand.setAlarmPayload(epochSec: epochSec), writeType: .withResponse)
         log("Alarm: armed for \(date) (epoch \(epochSec))")
     }
 
@@ -546,7 +546,7 @@ public final class BLEManager: NSObject, ObservableObject {
     ///
     /// Haptic firing cannot be verified in the simulator (no strap motor). Test on-device only.
     func testAlarmBuzz() {
-        send(.runHapticsPattern, payload: [2, 3, 0, 0, 0])  // patternId=2, 3 loops
+        send(.runHapticsPattern, payload: [2, 3, 0, 0, 0], writeType: .withResponse)  // patternId=2, 3 loops
         send(.runAlarm, payload: [0x01])
         log("Alarm: test buzz fired (patternId=2, runAlarm)")
     }

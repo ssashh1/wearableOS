@@ -43,6 +43,7 @@ struct AlarmView: View {
 
     // Transient state for the DatePicker binding
     @State private var wakeByDate: Date = AlarmView.todayAt(hour: 7, minute: 0)
+    @State private var showNotConnectedAlert = false
 
     var body: some View {
         NavigationStack {
@@ -73,6 +74,11 @@ struct AlarmView: View {
                 let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
                 wakeByHour   = comps.hour   ?? wakeByHour
                 wakeByMinute = comps.minute ?? wakeByMinute
+            }
+            .alert("Strap Not Connected", isPresented: $showNotConnectedAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("The alarm command can only be sent while the strap is connected. Connect the strap and try again.")
             }
         }
     }
@@ -149,12 +155,38 @@ struct AlarmView: View {
             }
             .listRowBackground(WH.Color.surface)
             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+
+            Button {
+                live.testAlarmBuzz()
+            } label: {
+                Label("Test buzz now", systemImage: "waveform")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, WH.Spacing.xs)
+            }
+            .buttonStyle(.bordered)
+            .tint(WH.Color.sleepPurple)
+            .disabled(!live.state.connected)
+            .listRowBackground(WH.Color.surface)
         }
     }
 
     private var statusSection: some View {
         Section {
             VStack(alignment: .leading, spacing: WH.Spacing.xs) {
+                // Connection indicator
+                HStack(spacing: WH.Spacing.xs) {
+                    Circle()
+                        .fill(live.state.connected ? WH.Color.recoveryGreen : WH.Color.recoveryRed)
+                        .frame(width: 7, height: 7)
+                    Text(live.state.connected
+                         ? "Strap connected"
+                         : "Strap not connected — must connect before setting alarm")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(live.state.connected ? WH.Color.textSecondary : WH.Color.recoveryRed)
+                }
+
+                Divider().background(WH.Color.separator).padding(.vertical, 2)
+
                 if alarmEnabled, armedEpoch > 0 {
                     let fireDate = Date(timeIntervalSince1970: armedEpoch)
                     HStack(spacing: WH.Spacing.xs) {
@@ -235,11 +267,17 @@ struct AlarmView: View {
     // MARK: - Actions
 
     private func setAlarm() {
+        guard live.state.connected else {
+            showNotConnectedAlert = true
+            return
+        }
         let fireDate = nextOccurrence(hour: wakeByHour, minute: wakeByMinute)
         alarmEnabled = true
         armedEpoch   = fireDate.timeIntervalSince1970
         // armStrapAlarm returns the shared BLEManager so SmartAlarmController can hold it weakly.
         let ble = live.armStrapAlarm(at: fireDate)
+        // Read back the armed time so the strap's response appears in the BLE log (verify it stored it).
+        live.getStrapAlarm()
         // Wire up smart-wake if enabled (SmartAlarmController arms itself in the window)
         if smartWakeEnabled {
             SmartAlarmController.shared.schedule(
